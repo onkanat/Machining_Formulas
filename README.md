@@ -8,7 +8,7 @@ When machining in lathes, turning centers, or multi-task machines, calculating t
 |Spindle speed $n (rpm)$|      |Spindle speed $n (rpm)$|  
 |![Alt text](./images/spindle-speed-m_jpg.webp)|      |![Alt text](./images/spindle-speed-i_jpg.webp)|  
 |Metal removal rate $Q(cm^3/min)$|      |Metal removal rate $Q(cm^3/min)$|  
-|![Alt text](https://cdn.sandvik.coromant.com/files/sitecollectionimages/knowledge/general%20turning/metal-removal-m_jpg.webp)|      |![Alt text](https://cdn.sandvik.coromant.com/files/sitecollectionimages/knowledge/general%20turning/metal-removal-i_jpg.webp)|  
+|![Alt text](./images/metal-removal-m_jpg.webp)|      |![Alt text](./images/metal-removal-i_jpg.webp)|  
 |Net power $Pc(kW)$|      |Net power $Pc(HP)$|  
 |![Alt text](./images/net-power-m_jpg.webp)|      |![Alt text](./images/net-power-i_jpg.webp)|  
 |Machining time $Tc(min)$|      |Machining time $Tc(min)$|  
