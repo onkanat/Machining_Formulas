@@ -43,3 +43,4 @@ Here you will find a collection of good to have milling formulas and definitions
 |![Alt text](https://cdn.sandvik.coromant.com/files/sitecollectionimages/knowledge/milling/tablefeedmm_jpg.webp)|![Alt text](https://cdn.sandvik.coromant.com/files/sitecollectionimages/knowledge/milling/tablefeedinch_jpg.webp) |
 
    
+# -Machining_Formulas
