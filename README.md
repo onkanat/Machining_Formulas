@@ -41,7 +41,7 @@ Here you will find a collection of good to have milling formulas and definitions
 | metric |      | imperial |  
 |------|--------|------|  
 |Table feed, $v(mm/min)$|       |Table feed, $(inch/min)$|
-|![Alt text](./images//tablefeedmm_jpg.webp)|       |![Alt text](./images/tablefeedinch_jpg.webp) |  
+|![Alt text](./images/tablefeedmm_jpg.webp)|       |![Alt text](./images/tablefeedinch_jpg.webp) |  
 |Cutting speed, $(m/min)$|      |Cutting speed, $(ft/min)$|
 |![Alt text](./images/cuttingspeedm_jpg.webp)||![Alt text](./images/cuttingspeed_jpg.webp)|
 |Spindel speed, $n(n/min)$|     |Spindel speed, $(n/rpm)$|  
@@ -72,7 +72,7 @@ Here you will find a collection of good to have milling formulas and definitions
 |$zc$	|Number of effective teeth	|pcs	|pcs|  
 |$hex$	|Maximum chip thickness	|mm	|inch|
 |$hm$	|Average chip thickness	|mm	|inch|  
-|$kc$	|Specific cutting force	|$N/mm^2$	|$N/inch^2$|  
+|$kc$	|Specific cutting force	|$N/mm^2$	|$N/inch^2|  
 |$Pc$	|Net power	|kW	HP|  
 |$Mc$	|Torque	|Nm	|lbf ft|  
 |$Q$	|Metal removal rate	|$cm^3/min$	|$inch^3/min$|
