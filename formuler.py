@@ -4,9 +4,35 @@ from collections import defaultdict
 #  https://www.omnicalculator.com/ your life in 3361 calculators
 
 #  TODO: docuscript complete, unit description complete, Using the gui the list !
-material_density = {
-    'çelik':7.85,
-    'tahta':1
+material_density = {'çelik':7.85,'tahta':1,
+    'Alçı (toz)':1.60, 'Kireç (sönmemiş)':1.000, 'Nikel': 8.800, 'Alkol': 0.790,
+    'Karbon': 3.510, 'Pirinç (dökme)':8.7,'Alüminyum plaka':2.699, 'Kağıt':1.1,
+    'Pirinç, işlenmiş':8.6, 'Alüminyum işlenmiş':2.700, 'Kauçuk':0.95, 'Porselen':2.5,
+    'Altın':19.28, 'Katran':1.200, 'Potasyum':0.86, 'Arsenik':5.720, 'Kalay':7.290,
+    'Platin':21.4, 'Asbest':2.5, 'Kalsiyum':1.550, 'Parafi':0.910, 'Antrasit (kömür)':1.555,
+    'Kazı (yum. toprak)':1.600, 'Petrol':0.800, 'Antimuan':6.700, 'Kazı (sert toprak)':1.800,
+    'Radyum':5.000, 'Asfalt':1.4, 'Kazı (yum. küskülük)':2.000, 'Reçine yağı':0.960,
+    'Ateş tuğlası':2.2, 'Kazı (sert küskülük)':2.200, 'Silisyum':2.340, 'Baryum':3.600,
+    'Kazı (yum. kaya)':2.400, 'Sıva':1.680, 'Barit':4.500, 'Kazı (sert kaya)':2.600,
+    'Su':1.000, 'Bakır':8.933, 'Kazı (çok sert kaya)':2.800, 'Deniz suyu':1.03,
+    'Bakır (işlenmiş)': 8.900, 'Kereste kavak':0.8, 'Sodyum':0.980, 'Bazalt (tabii)':3.3,
+    'Kereste çam':0.8, 'Tuğla':1.6, 'Benzen':0.890, 'Kereste kayın':0.9, 'Toryum':11.300,
+    'Benzin':0.700, 'Kereste meşe':1.0, 'Titan':4.500, 'Beton (demirli)':2.400, 
+    'Kereste karaçam':0.8, 'Tuz':1.200, 'Beton (demirsiz)':2.40, 'Kereste çınar':0.7,
+    'Uranyum':18.700, 'Bezir yağı':0.940, 'Kereste ladin':0.9, 'Vanadyum':5.600,
+    'Bronz':8.000, 'Kireç (sönmüş)':1.200, 'Volfram':19.100, 'Boraks':1.8, 
+    'Kireç (parça halinde)':1.00, 'Yağ (dizel)':0.880, 'Buz':0.920, 'Kil':2.6,
+    'Yağ (kolza)':0.910, 'Brom':3.140, 'Kiremit':1.4, 'Yağlar':0.930, 'Cam (pencere)':2.7,
+    'Kar (taze)':0.19, 'Yün':1.500, 'Cam yünü':0.30, 'Kar (yaş ve sıkışmış)':2.32,
+    'Keçe':0.20, 'Cıva':13.540, 'Kum, çakıl (sıkışmış)':1.760, 'Yığın Beton':2.150,
+    'Çimento (torba)':1.600, 'Kum çakıl (gevşek)':1.420, 'Zımpara tozu':4.0,
+    'Çimento (toz)':1.200, 'Kum çakıl (normal)':1.600, 'Zift':1.200,
+    'Çinko (işlenmiş)':7.150, 'Tuvenan  stabilize':1.800, 'Curuf':2.5, 'Kum taşı':2.6,
+    'Çelik':7.850, 'Kurşun':11.340, 'Çelik (dökme)':7.800, 'Kok':1.400, 'Demir cevheri':3.5,
+    'Kloroform':1.530, 'Demir (işlenmiş)':7.850, 'Kömür':1.5, 'Deri':1.02, 'Mermer':2.8,
+    'Elmas':3.520, 'Mermer pirinci':1.450, 'Eter':0.73, 'Metil alkol':0.800, 'Fosfor':1.830,
+    'Mika':3.2, 'Gazyağı':0.86, 'Muşamba':1.3, 'Grafit':2.3, 'Makine yağı':0.910, 'Gliserin':1.270,
+    'Magnezyum':1.740, 'Gümüş':10.500, 'Manganez':7.300, 'Mazot':0.95
     }
 
 definitions = [
@@ -29,7 +55,7 @@ def calculate_mass(shape: str, density: float, *args: Union[float, int]) -> floa
     Returns:
         float: The mass of the shape.
     '''
-    # TODO: width, lenght, height, is check !!! This is wrong !!!
+    # TODO: width, height, lenght, is check !!! This is wrong !!!
     calculations = defaultdict(lambda: lambda: 0)
     calculations["triangle"] = lambda length, width: (length * width) / 2 * density
     calculations["circle"] = lambda radius: (radius ** 2) * pi * density
@@ -143,8 +169,8 @@ def milling_calculations(definitions: str, *args: Union[float, int]) -> float:
     calculations["Feed per tooth"] = lambda Vf, n, ZEFF: (Vf/(n * ZEFF))
     calculations["Feed per revolution"] = lambda Vf, n: (Vf / n)
     calculations["Metal removal rate"] = lambda Vf, ap, ae: ((ap * ae * Vf)/1000)
-    calculations["Net power"] = lambda ae, ap, Vf, kc: ((ae * ap * Vf * kc)/60 * 10e+6)
-    calculations["Torque"] = lambda Pc, n: (Pc * 30 * 10e+3)/(pi * n)
+    calculations["Net power"] = lambda ae, ap, Vf, kc: ((ae * ap * Vf * kc)/60 * 10^6)
+    calculations["Torque"] = lambda Pc, n: (Pc * 30 * 10^3)/(pi * n)
     
 
 
