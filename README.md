@@ -19,18 +19,18 @@ When machining in lathes, turning centers, or multi-task machines, calculating t
 
 |Symbol	|Designation/definition	|Unit, metric |(imperial)|  
 |--|--|--|--|
-|Dm​	|Machined diameter mm (inch)|​	mm |(inch)|​
-|fn	|Feed per revolution​	|mm/r |(inch/r)|​
-|ap​	|Cutting depth ​	|mm |(inch)|​
-|vc	|Cutting speed|​	m/min |(feet/min)|​
-|n	|Spindle speed	|rpm|rpm|​​
-|Pc​|	Net power|	kW |(HP)|
-|Q	|Metal removal rate	|cm3/min |(inch3/min)|
-|hm​	|Average chip thickness​	|mm |(inch)|
-|hex	|Maximum chip thickness	|mm |(inch)|
-|Tc​	|Period of engagement​	|min||​
-|lm	|Machined length​	|mm |(inch)|
-|kc​	|Specific cutting force	|N/mm2 |(N/inch2)|
+|$Dm$​	|Machined diameter mm (inch)|​	mm |(inch)|​
+|$fn$	|Feed per revolution​	|mm/r |(inch/r)|​
+|$ap$​	|Cutting depth ​	|mm |(inch)|​
+|$vc$	|Cutting speed|​	m/min |(feet/min)|​
+|$n$	|Spindle speed	|rpm|rpm|​​
+|$Pc$​|	Net power|	kW |HP|
+|$Q$	|Metal removal rate	|$cm^3/min$ |$(inch^3/min)$|
+|$hm$​	|Average chip thickness​	|mm |(inch)|
+|$hex$	|Maximum chip thickness	|mm |(inch)|
+|$Tc$​	|Period of engagement​	|min||​
+|$lm$	|Machined length​	|mm |(inch)|
+|$kc$​	|Specific cutting force	|N/mm2 |(N/inch2)|
 |KAPR​	|Entering angle|	degree||​
 |PSIR​​	|Lead angle​	|degree||  
 ​
@@ -73,7 +73,7 @@ Here you will find a collection of good to have milling formulas and definitions
 |$hex$	|Maximum chip thickness	|mm	|inch|
 |$hm$	|Average chip thickness	|mm	|inch|  
 |$kc$	|Specific cutting force	|$N/mm^2$	|$N/inch^2|  
-|$Pc$	|Net power	|kW	HP|  
+|$Pc$	|Net power	|kW	|HP|  
 |$Mc$	|Torque	|Nm	|lbf ft|  
 |$Q$	|Metal removal rate	|$cm^3/min$	|$inch^3/min$|
 |KAPR	|Entering angle	|degree||	

@@ -57,12 +57,12 @@ def calculate_mass(shape: str, density: float, *args: Union[float, int]) -> floa
     '''
     # TODO: width, height, lenght, is check !!! This is wrong !!!
     calculations = defaultdict(lambda: lambda: 0)
-    calculations["triangle"] = lambda length, width: (length * width) / 2 * density
-    calculations["circle"] = lambda radius: (radius ** 2) * pi * density
-    calculations["semi-circle"] = lambda radius: (radius ** 2) * pi * density / 2
-    calculations["square"] = lambda length: length ** 2 * density
-    calculations["rectangle"] = lambda length, width: length * width * density
-    calculations["parallelogram"] = lambda length, height: length * height * density
+    calculations["triangle"] = lambda  width, height, length: ((height * width) / 2) * length * density
+    calculations["circle"] = lambda radius, length: ((radius ** 2) * pi) * length * density
+    calculations["semi-circle"] = lambda radius, length: ((radius ** 2) * pi / 2) * length * density
+    calculations["square"] = lambda width, length: width ** 2 * length * density
+    calculations["rectangle"] = lambda  width, height, length:  width * height * length * density
+    calculations["parallelogram"] = lambda width, height, length: width * height * length * density
     calculations["rhombus"] = lambda length, width: (length * width) / 2 * density
     calculations["trapezium"] = lambda length1, height1, length2, height2: (length1 * height1 + length2 * height2) / 2 * density
     calculations["kite"] = lambda diagonal1, diagonal2: (diagonal1 * diagonal2) / 4 * density
