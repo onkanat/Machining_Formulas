@@ -55,7 +55,7 @@ def calculate_mass(shape: str, density: float, *args: Union[float, int]) -> floa
     Returns:
         float: The mass of the shape.
     '''
-    # TODO: width, height, lenght, is check !!! This is wrong !!!
+    # TODO: width, height, lenght, is check !!! This is wrong !!! TAMAMLA !!!!
     calculations = defaultdict(lambda: lambda: 0)
     calculations["triangle"] = lambda  width, height, length: ((height * width) / 2) * length * density
     calculations["circle"] = lambda radius, length: ((radius ** 2) * pi) * length * density
@@ -63,14 +63,14 @@ def calculate_mass(shape: str, density: float, *args: Union[float, int]) -> floa
     calculations["square"] = lambda width, length: width ** 2 * length * density
     calculations["rectangle"] = lambda  width, height, length:  width * height * length * density
     calculations["parallelogram"] = lambda width, height, length: width * height * length * density
-    calculations["rhombus"] = lambda length, width: (length * width) / 2 * density
-    calculations["trapezium"] = lambda length1, height1, length2, height2: (length1 * height1 + length2 * height2) / 2 * density
-    calculations["kite"] = lambda diagonal1, diagonal2: (diagonal1 * diagonal2) / 4 * density
-    calculations["pentagon"] = lambda length, width: (length * width) * (sqrt(5) + 4) / 4 * density
-    calculations["hexagon"] = lambda length, width: (length * width) * (3 * sqrt(3) + 4) / 4 * density
-    calculations["octagon"] = lambda length, width: (length * width) * (2 * sqrt(2) + 4) / 4 * density
-    calculations["nonagon"] = lambda length, width: (length * width) * (5 * sqrt(5) + 12) / 4 * density
-    calculations["decagon"] = lambda length, width: (length * width) * (8 * sqrt(2) + 16) / 4 * density
+    calculations["rhombus"] = lambda height, width, length: ((height * width) / 2) * length * density
+    calculations["trapezium"] = lambda length1, height1, length2, height2, length: ((length1 * height1 + length2 * height2) / 2) * length * density
+    calculations["kite"] = lambda diagonal1, diagonal2, length: ((diagonal1 * diagonal2) / 4) * length * density
+    calculations["pentagon"] = lambda width, height, length: ((height * width) * (sqrt(5) + 4) / 4) * length * density
+    calculations["hexagon"] = lambda width, height, length: ((height * width) * (3 * sqrt(3) + 4) / 4) * length * density
+    calculations["octagon"] = lambda width, height, length: ((height * width) * (2 * sqrt(2) + 4) / 4) * length * density
+    calculations["nonagon"] = lambda width, height, length: ((height * width) * (5 * sqrt(5) + 12) / 4) * length * density
+    calculations["decagon"] = lambda width, height, length: ((height * width) * (8 * sqrt(2) + 16) / 4) * length * density
     
     try:
         return calculations[shape](*args)
