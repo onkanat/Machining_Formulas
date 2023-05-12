@@ -41,6 +41,10 @@ definitions = [
     'Torque',
 ]
 
+shape = ['triangle', 'circle', 'semi-circle','square', 'rectangle', 'parallelogram', 'rhombus',
+        'trapezium', 'kite', 'pentagon', 'hexagon', 'octagon', 'nonagon', 'decagon']
+
+
 def calculate_mass(shape: str, density: float, *args: Union[float, int]) -> float:
 
     '''
@@ -183,10 +187,10 @@ if __name__ == "__main__":
     mass = general_turning_calculations("Cutting speed",120,100)
     print(mass)
     mass = general_turning_calculations(definitions[1],120,100)
+    print(definitions[1], mass)
+    mass = calculate_mass("triangle", material_density["çelik"], 3, 4, 100)
     print(mass)
-    mass = calculate_mass("triangle", material_density["çelik"], 3, 4)
-    print(mass)
-    mass = calculate_mass("triangle", 7.85, 3, 4)
-    print(mass)
+    mass = calculate_mass(shape[0], 7.85, 3, 4, 100)
+    print(shape[0], mass)
     mass = milling_calculations("Table feed", 0.1, 100, 3)
-    print(mass)
+    print(mass)    
