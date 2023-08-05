@@ -2,6 +2,8 @@ import PySimpleGUI as sg
 import formuler
 from formuler import calculate_mass, general_turning_calculations, milling_calculations
 
+#TODO:Tooltip tanımla
+
 def mass(values):
     shape = values['-SHAPE-'][0]
     density = values['-MALZEME-'][0][1]
@@ -12,11 +14,21 @@ def mass(values):
     mass_value = calculate_mass(shape, density, *geos)
     return shape, density, geos, mass_value
 
+def mach_calculate(values):
+    definition= values['-CALC_METOD-'][0]
+    calc_data_str = values['-CALC_DATA-']
+    calc_data = [int(data) for data in calc_data_str.split(',')]
+
+    # print(definition, calc_data)
+    calc = general_turning_calculations(definition, *calc_data)
+    return definition, calc_data, calc
 
 kolon1 = [
     [sg.Text("Formüller ve Hesaplamalar")],
     [sg.Text("Malzeme Yoğunlukları.")],
-    [sg.Listbox(values=list(formuler.material_density.items()), key='-MALZEME-', enable_events=True, size=(25, 10))],
+    [sg.Listbox(values=list(formuler.material_density.items()),
+                key='-MALZEME-', enable_events=True,
+                tooltip='Tooltip dosyası oluşturup numaralandır.', size=(25, 10))],
 ]
 
 kolon2 = [
@@ -67,7 +79,7 @@ while True:
         
         window['-MASS_CALC_ANS-'].print(mass(values))
     elif event == "HESAPLA":
-        window['-CUT_CALC_ANS-'].print(values)
+        window['-CUT_CALC_ANS-'].print(mach_calculate(values))
     elif event == "ÇIKIŞ" or event == sg.WIN_CLOSED:
         break
 
