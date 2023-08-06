@@ -3,6 +3,7 @@ import formuler
 from formuler import calculate_mass, general_turning_calculations, milling_calculations
 
 #TODO:Tooltip tanımla
+#TODO: -MASS_CALC_ANS- ve _CUT_CALC_ANS- verisini *.cvs formatına çevir.
 
 def mass(values):
     shape = values['-SHAPE-'][0]
@@ -45,7 +46,8 @@ kolon3 = [
 kolon4 = [
     [sg.Text("Hesaplama Verisini Gir.")],
     [sg.Input("", key='-CALC_DATA-',size=(25,1))],
-    [sg.Output(size=(25,10),key='-CUT_CALC_ANS-')]
+    [sg.Output(size=(25,10),key='-CUT_CALC_DATAS-')] # Buraya Kesme data verisi gelecek
+
 ]
 
 layoutTab_1 = [
@@ -59,7 +61,9 @@ layoutTab_1 = [
 layoutTab_2 = [
     [sg.T("")],
     [sg.Col(kolon3, p=0), sg.Col(kolon4, p=0)],
-    [sg.Button("HESAPLA")]
+    [sg.Button("HESAPLA")],
+    [sg.Output(size=(54,10),key='-CUT_CALC_ANS-')]
+
 ]
 
 
@@ -68,7 +72,8 @@ layout = [[sg.TabGroup([[sg.Tab('Ağırlık Hesaplama', layoutTab_1),
                          [sg.Button("ÇIKIŞ")]]          
 
 # Create the window
-window = sg.Window("Mühendislik Hesaplamaları ve Verimlilik.", layout, return_keyboard_events=True, margins=(25, 25))
+window = sg.Window("Mühendislik Hesaplamaları ve Verimlilik.",
+                   layout, return_keyboard_events=True, margins=(25, 25))
 
 # Create an event loop
 while True:
@@ -76,11 +81,12 @@ while True:
     # End program if user closes window or
     # presses the OK button
     if event == "AĞIRLIK HESAPLA":
-        
         window['-MASS_CALC_ANS-'].print(mass(values))
     elif event == "HESAPLA":
         window['-CUT_CALC_ANS-'].print(mach_calculate(values))
     elif event == "ÇIKIŞ" or event == sg.WIN_CLOSED:
         break
+    elif event == '-CALC_METOD-' and len(values['-CALC_METOD-']): # if a list item is chosen
+        window['-CUT_CALC_DATAS-'].print(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
 
 window.close()
