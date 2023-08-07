@@ -1,4 +1,6 @@
 # GEÇİCİ ÇALIŞMA DOSYASI SİLİNECEK
+# https://github.com/PySimpleGUI/PySimpleGUI/issues/1633
+# Get Listbox values as they are selected #1633
 import PySimpleGUI as sg
 
 names = ['Roberta', 'Kylie', 'Jenny', 'Helen',

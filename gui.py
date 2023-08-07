@@ -1,8 +1,15 @@
 import PySimpleGUI as sg
 import formuler
 from formuler import calculate_mass, general_turning_calculations, milling_calculations
+import json
 
-#TODO:Tooltip tanımla
+
+#TODO:Tooltip.txt tanımlandı dosyayı geliştir ip uçlarını tamamla !!!
+with open('tooltips.txt') as f:
+    data = f.read()
+
+tips = json.loads(data)
+
 #TODO: -MASS_CALC_ANS- ve _CUT_CALC_ANS- verisini *.cvs formatına çevir.
 
 def mass(values):
@@ -29,7 +36,7 @@ kolon1 = [
     [sg.Text("Malzeme Yoğunlukları.")],
     [sg.Listbox(values=list(formuler.material_density.items()),
                 key='-MALZEME-', enable_events=True,
-                tooltip='Tooltip dosyası oluşturup numaralandır.', size=(25, 10))],
+                tooltip=tips['tip01'], size=(25, 10))],
 ]
 
 kolon2 = [

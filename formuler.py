@@ -4,8 +4,8 @@ from collections import defaultdict
 #  https://www.omnicalculator.com/ your life in 3361 calculators
 
 #  TODO: docuscript complete, unit description complete, Using the gui the list !
-material_density = {'çelik':7.85,'tahta':1,
-    'Alçı (toz)':1.60, 'Kireç (sönmemiş)':1.000, 'Nikel': 8.800, 'Alkol': 0.790,
+material_density = {'Alçı (toz)':1.60, 'Kireç (sönmemiş)':1.000,
+    'Nikel': 8.800, 'Alkol': 0.790,
     'Karbon': 3.510, 'Pirinç (dökme)':8.7,'Alüminyum plaka':2.699, 'Kağıt':1.1,
     'Pirinç, işlenmiş':8.6, 'Alüminyum işlenmiş':2.700, 'Kauçuk':0.95, 'Porselen':2.5,
     'Altın':19.28, 'Katran':1.200, 'Potasyum':0.86, 'Arsenik':5.720, 'Kalay':7.290,
