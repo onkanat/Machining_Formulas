@@ -1,2 +1,0 @@
-{"tip01":"tiip\ntiiip \ntiiiiiip",
-"tip02":"ttttttt" }

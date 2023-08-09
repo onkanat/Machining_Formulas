@@ -3,9 +3,12 @@ import formuler
 from formuler import calculate_mass, general_turning_calculations, milling_calculations
 import json
 
+# sg.show_debugger_window(location=(10,10))
+
+sg.set_options(tooltip_font='Courier 10')
 
 #TODO:Tooltip.txt tanımlandı dosyayı geliştir ip uçlarını tamamla !!!
-with open('tooltips.txt') as f:
+with open('tooltips.json') as f:
     data = f.read()
 
 tips = json.loads(data)
@@ -54,7 +57,17 @@ kolon4 = [
     [sg.Text("Hesaplama Verisini Gir.")],
     [sg.Input("", key='-CALC_DATA-',size=(25,1))],
     [sg.Output(size=(25,10),key='-CUT_CALC_DATAS-')] # Buraya Kesme data verisi gelecek
+]
 
+kolon5 = [        
+    [sg.Text("Hesaplanacak Değer.")],
+    [sg.Listbox(values=formuler.definitions,key='-MILLING_CALC_METOD-',enable_events=True, size=(25, 11))]
+]
+
+kolon6 = [
+    [sg.Text("Hesaplama Verisini Gir.")],
+    [sg.Input("", key='-MILLING_CALC_DATA-',size=(25,1))],
+    [sg.Output(size=(25,10),key='-MILLING_CUT_CALC_DATAS-')] # Buraya Kesme data verisi gelecek
 ]
 
 layoutTab_1 = [
@@ -73,9 +86,16 @@ layoutTab_2 = [
 
 ]
 
+layoutTab_3 =[
+    [sg.T("")],
+    [sg.Col(kolon5, p=0), sg.Col(kolon6, p=0)],
+    [sg.Button("HESAPLA")],
+    [sg.Output(size=(54,10),key='-VALUE_MONITORING-')]
+]
 
 layout = [[sg.TabGroup([[sg.Tab('Ağırlık Hesaplama', layoutTab_1),
-                         sg.Tab('REPL & Kesme Verisi Hesaplama', layoutTab_2)]])],
+                         sg.Tab('General Turning Formulas and Definitions', layoutTab_2),
+                         sg.Tab('Milling Formulas and Definitions',layoutTab_3)]])],
                          [sg.Button("ÇIKIŞ")]]          
 
 # Create the window
@@ -85,14 +105,15 @@ window = sg.Window("Mühendislik Hesaplamaları ve Verimlilik.",
 # Create an event loop
 while True:
     event, values = window.read() # type: ignore
-    # End program if user closes window or
-    # presses the OK button
-    if event == "AĞIRLIK HESAPLA":
+
+    if event == "ÇIKIŞ" or event == sg.WIN_CLOSED:
+        break
+    elif event == "AĞIRLIK HESAPLA":
         window['-MASS_CALC_ANS-'].print(mass(values))
+
     elif event == "HESAPLA":
         window['-CUT_CALC_ANS-'].print(mach_calculate(values))
-    elif event == "ÇIKIŞ" or event == sg.WIN_CLOSED:
-        break
+        
     elif event == '-CALC_METOD-' and len(values['-CALC_METOD-']): # if a list item is chosen
         window['-CUT_CALC_DATAS-'].print(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
 
