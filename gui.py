@@ -109,12 +109,12 @@ while True:
     if event == "ÇIKIŞ" or event == sg.WIN_CLOSED:
         break
     elif event == "AĞIRLIK HESAPLA":
-        window['-MASS_CALC_ANS-'].print(mass(values))
+        window['-MASS_CALC_ANS-'].update(mass(values))
 
     elif event == "HESAPLA":
-        window['-CUT_CALC_ANS-'].print(mach_calculate(values))
+        window['-CUT_CALC_ANS-'].update(mach_calculate(values))
         
     elif event == '-CALC_METOD-' and len(values['-CALC_METOD-']): # if a list item is chosen
-        window['-CUT_CALC_DATAS-'].print(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
+        window['-CUT_CALC_DATAS-'].update(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
 
 window.close()
