@@ -15,24 +15,6 @@ tips = json.loads(data)
 
 #TODO: -MASS_CALC_ANS- ve _CUT_CALC_ANS- verisini *.cvs formatına çevir.
 
-def mass(values):
-    shape = values['-SHAPE-'][0]
-    density = values['-MALZEME-'][0][1]
-    geos_str = values['-MALZEME_GEO-']
-    geos = [int(geo) for geo in geos_str.split(',')]
-
-    # print(shape, density, geos)
-    mass_value = calculate_mass(shape, density, *geos)
-    return shape, density, geos, mass_value
-
-def mach_calculate(values):
-    definition= values['-CALC_METOD-'][0]
-    calc_data_str = values['-CALC_DATA-']
-    calc_data = [int(data) for data in calc_data_str.split(',')]
-
-    # print(definition, calc_data)
-    calc = general_turning_calculations(definition, *calc_data)
-    return definition, calc_data, calc
 
 kolon1 = [
     [sg.Text("Formüller ve Hesaplamalar")],
@@ -50,7 +32,7 @@ kolon2 = [
 
 kolon3 = [        
     [sg.Text("Hesaplanacak Değer.")],
-    [sg.Listbox(values=formuler.definitions,key='-CALC_METOD-',enable_events=True, size=(25, 11))]
+    [sg.Listbox(values=formuler.definitions,key='-CALC_METOD-',tooltip=tips["tip02"], enable_events=True, size=(25, 11))]
 ]
 
 kolon4 = [
@@ -109,12 +91,26 @@ while True:
     if event == "ÇIKIŞ" or event == sg.WIN_CLOSED:
         break
     elif event == "AĞIRLIK HESAPLA":
-        window['-MASS_CALC_ANS-'].update(mass(values))
+        shape = values['-SHAPE-'][0]
+        density = values['-MALZEME-'][0][1]
+        geos_str = values['-MALZEME_GEO-']
+        geos = [int(geo) for geo in geos_str.split(',')]
 
+        # print(shape, density, geos)
+        mass_value = calculate_mass(shape, density, *geos)
+        window['-MASS_CALC_ANS-'].print((shape, density, geos, mass_value)) # type: ignore 
+
+    
     elif event == "HESAPLA":
-        window['-CUT_CALC_ANS-'].update(mach_calculate(values))
+        definition= values['-CALC_METOD-'][0]
+        calc_data_str = values['-CALC_DATA-']
+        calc_data = [int(data) for data in calc_data_str.split(',')]
+
+        # print(definition, calc_data)
+        calc = general_turning_calculations(definition, *calc_data)
+        window['-CUT_CALC_ANS-'].print((definition, calc_data, calc)) # type: ignore
         
     elif event == '-CALC_METOD-' and len(values['-CALC_METOD-']): # if a list item is chosen
-        window['-CUT_CALC_DATAS-'].update(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
+        window['-CUT_CALC_DATAS-'].Update(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
 
 window.close()

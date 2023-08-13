@@ -1,6 +1,6 @@
 {
     "files.autoSave": "onFocusChange",
-    "editor.cursorStyle": "block-outline",
+    "editor.cursorStyle": "line",
     "editor.minimap.autohide": true,
     "window.autoDetectColorScheme": true,
     "liveServer.settings.CustomBrowser": "chrome",
@@ -16,5 +16,12 @@
     "python.analysis.inlayHints.functionReturnTypes": true,
     "python.analysis.inlayHints.pytestParameters": true,
     "python.analysis.inlayHints.variableTypes": true,
-    "python.analysis.typeCheckingMode": "basic"
+    "python.analysis.typeCheckingMode": "basic",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.python"
+    },
+    "python.formatting.provider": "none",
+    "editor.cursorSurroundingLines": 2,
+    "workbench.editor.defaultBinaryEditor": "default",
+    "workbench.settings.openDefaultKeybindings": true
 }
