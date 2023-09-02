@@ -9,9 +9,9 @@ sg.set_options(tooltip_font='Courier 10')
 
 #TODO:Tooltip.txt tanımlandı dosyayı geliştir ip uçlarını tamamla !!!
 with open('tooltips.json') as f:
-    data = f.read()
-
-tips = json.loads(data)
+    # data = f.read()
+    tips = json.load(f)
+    f.close()
 
 #TODO: -MASS_CALC_ANS- ve _CUT_CALC_ANS- verisini *.cvs formatına çevir.
 
@@ -55,7 +55,7 @@ kolon6 = [
 layoutTab_1 = [
     [sg.T("")],
     [sg.Col(kolon1, p=0), sg.Col(kolon2, p=0)],
-    [sg.Input("Malzeme Ölçülerini Gir.",key='-MALZEME_GEO-', size=(54,1))],
+    [sg.Input("Malzeme Ölçülerini Gir.",key='-MALZEME_GEO-', size=(54,1),)],
     [sg.Output(size=(54, 10), key='-MASS_CALC_ANS-')],
     [sg.Button("AĞIRLIK HESAPLA")]
 ]
@@ -63,16 +63,16 @@ layoutTab_1 = [
 layoutTab_2 = [
     [sg.T("")],
     [sg.Col(kolon3, p=0), sg.Col(kolon4, p=0)],
-    [sg.Button("HESAPLA")],
-    [sg.Output(size=(54,10),key='-CUT_CALC_ANS-')]
+    [sg.Button("GENERAL TURNING HESAPLA")],
+    [sg.Output(size=(54,10),key='-GTURNING_CUT_CALC_ANS-')]
 
 ]
 
 layoutTab_3 =[
     [sg.T("")],
     [sg.Col(kolon5, p=0), sg.Col(kolon6, p=0)],
-    [sg.Button("HESAPLA")],
-    [sg.Output(size=(54,10),key='-VALUE_MONITORING-')]
+    [sg.Button("MILLING HESAPLA")],
+    [sg.Output(size=(54,10),key='-MILLING_CUT_CALC_ANS-')]
 ]
 
 layout = [[sg.TabGroup([[sg.Tab('Ağırlık Hesaplama', layoutTab_1),
@@ -82,7 +82,7 @@ layout = [[sg.TabGroup([[sg.Tab('Ağırlık Hesaplama', layoutTab_1),
 
 # Create the window
 window = sg.Window("Mühendislik Hesaplamaları ve Verimlilik.",
-                   layout, return_keyboard_events=True, margins=(25, 25))
+                   layout, return_keyboard_events=True, margins=(5, 5))
 
 # Create an event loop
 while True:
@@ -101,16 +101,27 @@ while True:
         window['-MASS_CALC_ANS-'].print((shape, density, geos, mass_value)) # type: ignore 
 
     
-    elif event == "HESAPLA":
+    elif event == "GENERAL TURNING HESAPLA":
         definition= values['-CALC_METOD-'][0]
         calc_data_str = values['-CALC_DATA-']
         calc_data = [int(data) for data in calc_data_str.split(',')]
 
         # print(definition, calc_data)
         calc = general_turning_calculations(definition, *calc_data)
-        window['-CUT_CALC_ANS-'].print((definition, calc_data, calc)) # type: ignore
-        
-    elif event == '-CALC_METOD-' and len(values['-CALC_METOD-']): # if a list item is chosen
-        window['-CUT_CALC_DATAS-'].Update(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
+        window['-GTURNING_CUT_CALC_ANS-'].print((definition, calc_data, calc)) # type: ignore
 
+    elif event == "MILLING HESAPLA":
+        definition= values['-MILLING_CALC_METOD-'][0]
+        calc_data_str = values['-MILLING_CALC_DATA-']
+        calc_data = [int(data) for data in calc_data_str.split(',')]
+
+        # print(definition, calc_data)
+        calc = milling_calculations(definition, *calc_data)
+        window['-MILLING_CUT_CALC_ANS-'].print((definition, calc_data, calc)) # type: ignore
+
+    elif event == '-CALC_METOD-' and len(values['-CALC_METOD-']): # if a list item is chosen
+        window['-CUT_CALC_DATAS-'].print(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
+
+    elif event == '-MILLING_CALC_METOD-' and len(values['-MILLING_CALC_METOD-']): # if a list item is chosen
+        window['-MILLING_CUT_CALC_DATAS-'].print(values['-MILLING_CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
 window.close()
