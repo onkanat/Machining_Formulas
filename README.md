@@ -1,7 +1,7 @@
 
 # General Turning Formulas and Definitions  
 
-When machining in lathes, turning centers, or multi-task machines, calculating the correct values for different machining parameters like cutting speed and spindle speed is a crucial factor for good results. In this section, you will find the formulas and definitions needed for general turning.   
+When machining in lathes, turning centers, or multi-task machines, calculating the correct values for different machining parameters like cutting speed and spindle speed is a crucial factor for good results. In this section, you will find the formulas and definitions needed for general turning.
 | metric |      | imperial |  
 |----|----|----|
 |Cutting speed $vc (m/min)$|      |Cutting speed $vc (ft/min)$|  
@@ -63,7 +63,7 @@ Here you will find a collection of good to have milling formulas and definitions
 |$DCap$ |Cutting diameter at cutting depth $ap$ |mm |inch|  
 |$Dm$ |Machined diameter (component diameter) |mm |inch|  
 |$fz$ |Feed per tooth |mm |inch|  
-|$fn$ |Feed per revolution |mm/rev |inch/rev| 
+|$fn$ |Feed per revolution |mm/rev |inch/rev|
 |$n$ |Spindle speed |rpm |rpm|  
 |$vc$ |Cutting speed |m/min |ft/min|  
 |$ve$ |Effective cutting speed |mm/min |inch/min|
