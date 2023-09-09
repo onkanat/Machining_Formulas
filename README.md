@@ -5,7 +5,7 @@ When machining in lathes, turning centers, or multi-task machines, calculating t
 | metric |      | imperial |  
 |----|----|----|
 |Cutting speed $vc (m/min)$|      |Cutting speed $vc (ft/min)$|  
-|![Alt text](./images/cutting-speed-m_jpg.webp)|     |![Alt text](./images/cutting-speed-i_jpg.webp)|  
+|![Alt text](/images/cutting-speed-m_jpg.webp)|     |![Alt text](./images/cutting-speed-i_jpg.webp)|  
 |Spindle speed $n (rpm)$|      |Spindle speed $n (rpm)$|  
 |![Alt text](./images/spindle-speed-m_jpg.webp)|      |![Alt text](./images/spindle-speed-i_jpg.webp)|  
 |Metal removal rate $Q(cm^3/min)$|      |Metal removal rate $Q(cm^3/min)$|  
