@@ -43,7 +43,7 @@ kolon4 = [
 
 kolon5 = [        
     [sg.Text("Hesaplanacak Değer.")],
-    [sg.Listbox(values=formuler.definitions,key='-MILLING_CALC_METOD-',enable_events=True, size=(25, 11))]
+    [sg.Listbox(values=formuler.definitions,key='-MILLING_CALC_METOD-',tooltip=tips["tip03"], enable_events=True, size=(25, 11))]
 ]
 
 kolon6 = [
@@ -82,7 +82,7 @@ layout = [[sg.TabGroup([[sg.Tab('Ağırlık Hesaplama', layoutTab_1),
 
 # Create the window
 window = sg.Window("Mühendislik Hesaplamaları ve Verimlilik.",
-                   layout, return_keyboard_events=True, margins=(5, 5))
+                   layout, return_keyboard_events=True, margins=(10, 10), )
 
 # Create an event loop
 while True:
@@ -98,7 +98,7 @@ while True:
 
         # print(shape, density, geos)
         mass_value = calculate_mass(shape, density, *geos)
-        window['-MASS_CALC_ANS-'].print((shape, density, geos, mass_value)) # type: ignore 
+        window['-MASS_CALC_ANS-'].print(shape, density, geos, f'{mass_value/1000000} kg') # type: ignore 
 
     
     elif event == "GENERAL TURNING HESAPLA":
@@ -108,7 +108,7 @@ while True:
 
         # print(definition, calc_data)
         calc = general_turning_calculations(definition, *calc_data)
-        window['-GTURNING_CUT_CALC_ANS-'].print((definition, calc_data, calc)) # type: ignore
+        window['-GTURNING_CUT_CALC_ANS-'].print(definition, calc_data, calc) # type: ignore
 
     elif event == "MILLING HESAPLA":
         definition= values['-MILLING_CALC_METOD-'][0]
@@ -117,7 +117,7 @@ while True:
 
         # print(definition, calc_data)
         calc = milling_calculations(definition, *calc_data)
-        window['-MILLING_CUT_CALC_ANS-'].print((definition, calc_data, calc)) # type: ignore
+        window['-MILLING_CUT_CALC_ANS-'].print(definition, calc_data, calc) # type: ignore
 
     elif event == '-CALC_METOD-' and len(values['-CALC_METOD-']): # if a list item is chosen
         window['-CUT_CALC_DATAS-'].print(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
