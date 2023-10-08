@@ -8,7 +8,7 @@ import json
 sg.set_options(tooltip_font='Courier 10')
 
 #TODO:Tooltip.txt tanımlandı dosyayı geliştir ip uçlarını tamamla !!!
-with open('tooltips.json') as f:
+with open('/Users/hakankilicaslan/GitHub/Machining_Formulas/tooltips.json') as f:
     # data = f.read()
     tips = json.load(f)
     f.close()
@@ -37,7 +37,7 @@ kolon3 = [
 
 kolon4 = [
     [sg.Text("Hesaplama Verisini Gir.")],
-    [sg.Input("", key='-CALC_DATA-',size=(25,1))],
+    [sg.Input("", key='-CALC_DATA-',size=(25,1), enable_events=True)],
     [sg.Output(size=(25,10),key='-CUT_CALC_DATAS-')] # Buraya Kesme data verisi gelecek
 ]
 
@@ -55,7 +55,7 @@ kolon6 = [
 layoutTab_1 = [
     [sg.T("")],
     [sg.Col(kolon1, p=0), sg.Col(kolon2, p=0)],
-    [sg.Input("Malzeme Ölçülerini Gir.",key='-MALZEME_GEO-', size=(54,1),)],
+    [sg.Input("Malzeme Ölçülerini Gir.",key='-MALZEME_GEO-', size=(54,1), enable_events=True)],
     [sg.Output(size=(54, 10), key='-MASS_CALC_ANS-')],
     [sg.Button("AĞIRLIK HESAPLA")]
 ]
@@ -90,7 +90,7 @@ while True:
 
     if event == "ÇIKIŞ" or event == sg.WIN_CLOSED:
         break
-    elif event == "AĞIRLIK HESAPLA":
+    elif event == "AĞIRLIK HESAPLA" or '\r' in values['-MALZEME_GEO-']:
         shape = values['-SHAPE-'][0]
         density = values['-MALZEME-'][0][1]
         geos_str = values['-MALZEME_GEO-']
