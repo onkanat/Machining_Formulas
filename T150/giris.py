@@ -1,23 +1,28 @@
-from turtle import update
 import PySimpleGUI as sg
-import giris
+
+malzeme_kalitesi = ['C-1050', 'Transmisyon', 'St-37', 'St-57']
+malzeme_sekli = ['Dolu Yuvarlak', 'Kutu profil', 'Kare Profil', 'Kalın Etli Boru', 'Boru']
+
+global cut_data
 
 cut_data = [[150, 24, 100, 'Ç-1050', 'Dolu', 'Var', 'YOK', 'Var']]
 cut_heads = ['Çap/En', 'Boy', 'Kesim Adet', 'Malzeme Kalitesi', 'Malzeme Şekli', 'Uç Kesim', 'Konveyör', 'Soğutma']
 
 
-def ana():
+def giris():
     global cut_data
-    line_01 = [sg.Text('Testere Dönüş Hızı :'), sg.Output(key='-TDH-',size=(6,1)),
-                sg.Text('d/dak'), sg.Text('Kesilen :'), sg.Output(key='-KSL-', size=(6,1)),sg.Text('Adet')]
-    line_02 = [sg.Text('Kesme İlerlemesi :  '), sg.Output(key='-KSMI-', size=(6,1)), sg.Text('mm/dak'),
-               sg.Text('Kalan :'), sg.Output(key='-KLN-', size=(6,1)), sg.Text('Adet')]
-    line_03 = [sg.Image('/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill/icons8-arrow-50.png'),
-               sg.Image('/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill-3/icons8-arrow-50.png'),
-                sg.Image('/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill-2/icons8-arrow-50.png'),
-                sg.Button(image_filename='/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill-3/icons8-arrow-50.png', key='-Exit-'),
-                sg.Button('GÜNCELLE', image_filename='/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill-3/icons8-arrow-50.png', key='-Update-')
-                ]
+    
+    line_01 = [sg.Text('Malzeme Kalitesi :'), sg.Listbox(malzeme_kalitesi, key='-MALZEME_KALITESI-',size=(16,3)),
+                sg.Text('Malzeme Şekli :'), sg.Listbox(malzeme_sekli, key='-MALZEME_KALITESI-',size=(16,3)),
+                sg.Text('Uç Kesim'), sg.Checkbox('Var/Yok'),
+                sg.Text('Konveyor'), sg.Checkbox('Var/Yok'),
+                sg.Text('Soğutma '), sg.Checkbox('Var/Yok')]
+    line_02 = [sg.Text('Çap / En :'), sg.Input(key='-CAP-',size=(6,1)),
+                    sg.Text('Kesim Boyu :'), sg.Input(key='-BOY-',size=(6,1)),
+                    sg.Text('Kesim Adedi :'), sg.Input(key='-KESIM_ADET-',size=(6,1)),
+                    sg.Button('ONAYLA', image_filename='/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill-3/icons8-arrow-50.png', key='-ONAYLA-')]
+    line_03 = [sg.HorizontalSeparator()]
+
     table_01 = [sg.Table(values=cut_data, headings=cut_heads ,col_widths=4, display_row_numbers=True, justification='center', num_rows=5, key='-table_01-' )]
     led_tx_rx = [
     [sg.T('Tx/Rx:'),
@@ -41,13 +46,17 @@ def ana():
     led2_on = False
     while True:
 
-        event,values = window.read(timeout=200)
+        event,values = window.read()
         print("event:", event, "values:", values)
         if event == sg.WIN_CLOSED or event == '-Exit-':
             break
-        if event == "-Update-":
-            window['-table_01-'].update(values=(giris.cut_data))
-            
+
+        if event == '-ONAYLA-':
+            # FIXME: SIRA Yanlış cut_data.append(list(values.values()))
+            cut_data.append(cut_data[0])
+            window['-table_01-'].update(values=cut_data)
+            print(cut_data)
+
         if led1_on:
             window['-led1-'].update(1)
             led1_on = False
