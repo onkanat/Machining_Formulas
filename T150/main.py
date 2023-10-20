@@ -24,6 +24,10 @@ def pencere():
         [sg.Button(' Ana Pencere ', key='-ANA-',
                                             image_filename='/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill-3/icons8-arrow-100.png'),
         sg.Button(' Kesim Listesi Giriş', key='-GIRIS-',
+                                            image_filename='/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill-3/icons8-arrow-100.png'),
+        sg.Button(' Kesim Listesi Giriş', key='-GIRIS-',
+                                            image_filename='/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill-3/icons8-arrow-100.png'),
+        sg.Button(' Kesim Listesi Giriş', key='-GIRIS-',
                                             image_filename='/Users/hakankilicaslan/GitHub/Machining_Formulas/T150/icons8-arrow-quill-3/icons8-arrow-100.png')]
 ]
 
