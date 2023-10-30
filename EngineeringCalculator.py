@@ -87,7 +87,7 @@ class EngineeringCalculator:
             return self.milling_definitions[definition](*args)
         else:
             raise ValueError("Invalid definition")
-
+'''
 if __name__ == "__main__":
     calculator = EngineeringCalculator()
 
@@ -105,3 +105,4 @@ if __name__ == "__main__":
 
     mass = calculator.calculate_milling("Table feed", 0.1, 100, 3)
     print("Table Feed:", mass)
+'''

@@ -1,8 +1,9 @@
 import PySimpleGUI as sg
 import formuler
 from formuler import calculate_mass, general_turning_calculations, milling_calculations
+from EngineeringCalculator import EngineeringCalculator
 import json
-
+ec = EngineeringCalculator()
 # sg.show_debugger_window(location=(10,10))
 
 sg.set_options(tooltip_font='Courier 10')
@@ -23,35 +24,29 @@ kolon1 = [
                 key='-MALZEME-', enable_events=True,
                 tooltip=tips['tip01'], size=(25, 10))],
 ]
-
 kolon2 = [
     [sg.Text("")],
     [sg.Text("Malzeme Şekilleri")],
     [sg.Listbox(values=formuler.shape, key='-SHAPE-',enable_events=True, size=(25, 10))],
 ]
-
 kolon3 = [        
     [sg.Text("Hesaplanacak Değer.")],
     [sg.Listbox(values=formuler.definitions,key='-CALC_METOD-',tooltip=tips["tip02"], enable_events=True, size=(25, 11))]
 ]
-
 kolon4 = [
     [sg.Text("Hesaplama Verisini Gir.")],
     [sg.Input("", key='-CALC_DATA-',size=(25,1), enable_events=True)],
     [sg.Output(size=(25,10),key='-CUT_CALC_DATAS-')] # Buraya Kesme data verisi gelecek
 ]
-
 kolon5 = [        
     [sg.Text("Hesaplanacak Değer.")],
     [sg.Listbox(values=formuler.definitions,key='-MILLING_CALC_METOD-',tooltip=tips["tip03"], enable_events=True, size=(25, 11))]
 ]
-
 kolon6 = [
     [sg.Text("Hesaplama Verisini Gir.")],
     [sg.Input("", key='-MILLING_CALC_DATA-',size=(25,1))],
     [sg.Output(size=(25,10),key='-MILLING_CUT_CALC_DATAS-')] # Buraya Kesme data verisi gelecek
 ]
-
 layoutTab_1 = [
     [sg.T("")],
     [sg.Col(kolon1, p=0), sg.Col(kolon2, p=0)],
@@ -59,15 +54,12 @@ layoutTab_1 = [
     [sg.Output(size=(54, 10), key='-MASS_CALC_ANS-')],
     [sg.Button("AĞIRLIK HESAPLA")]
 ]
-
 layoutTab_2 = [
     [sg.T("")],
     [sg.Col(kolon3, p=0), sg.Col(kolon4, p=0)],
     [sg.Button("GENERAL TURNING HESAPLA")],
     [sg.Output(size=(54,10),key='-GTURNING_CUT_CALC_ANS-')]
-
 ]
-
 layoutTab_3 =[
     [sg.T("")],
     [sg.Col(kolon5, p=0), sg.Col(kolon6, p=0)],
@@ -97,7 +89,9 @@ while True:
         geos = [int(geo) for geo in geos_str.split(',')]
 
         # print(shape, density, geos)
-        mass_value = calculate_mass(shape, density, *geos)
+#         mass_value = calculate_mass(shape, density, *geos)
+        mass_value = ec.calculate_material_mass(shape, density, *geos)
+
         window['-MASS_CALC_ANS-'].print(shape, density, geos, f'{mass_value/1000000} kg') # type: ignore 
 
     
@@ -107,7 +101,7 @@ while True:
         calc_data = [int(data) for data in calc_data_str.split(',')]
 
         # print(definition, calc_data)
-        calc = general_turning_calculations(definition, *calc_data)
+        calc = ec.calculate_turning(definition, *calc_data)
         window['-GTURNING_CUT_CALC_ANS-'].print(definition, calc_data, calc) # type: ignore
 
     elif event == "MILLING HESAPLA":
@@ -116,7 +110,7 @@ while True:
         calc_data = [int(data) for data in calc_data_str.split(',')]
 
         # print(definition, calc_data)
-        calc = milling_calculations(definition, *calc_data)
+        calc = ec.calculate_milling(definition, *calc_data)
         window['-MILLING_CUT_CALC_ANS-'].print(definition, calc_data, calc) # type: ignore
 
     elif event == '-CALC_METOD-' and len(values['-CALC_METOD-']): # if a list item is chosen
