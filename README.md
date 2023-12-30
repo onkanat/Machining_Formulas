@@ -7,13 +7,13 @@ When machining in lathes, turning centers, or multi-task machines, calculating t
 |Cutting speed $vc (m/min)$|      |Cutting speed $vc (ft/min)$|  
 |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/cutting-speed-m_jpg.webp)|     |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/cutting-speed-i_jpg.webp)|  
 |Spindle speed $n (rpm)$|      |Spindle speed $n (rpm)$|  
-|![Alt text](./images/spindle-speed-m_jpg.webp)|      |![Alt text](./images/spindle-speed-i_jpg.webp)|  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/spindle-speed-m_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/spindle-speed-i_jpg.webp)|  
 |Metal removal rate $Q(cm^3/min)$|      |Metal removal rate $Q(cm^3/min)$|  
-|![Alt text](./images/metal-removal-m_jpg.webp)|      |![Alt text](./images/metal-removal-i_jpg.webp)|  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/metal-removal-m_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/metal-removal-i_jpg.webp)|  
 |Net power $Pc(kW)$|      |Net power $Pc(HP)$|  
-|![Alt text](./images/net-power-m_jpg.webp)|      |![Alt text](./images/net-power-i_jpg.webp)|  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/net-power-m_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/net-power-i_jpg.webp)|  
 |Machining time $Tc(min)$|      |Machining time $Tc(min)$|  
-|![Alt text](./images/machining-time-m_jpg.webp)|      |![Alt text](./images/machining-time-m_jpg.webp)|  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/machining-time-m_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/machining-time-m_jpg.webp)|  
 
 |Symbol |Designation/definition |Unit, metric |(imperial)|  
 |--|--|--|--|
@@ -40,21 +40,21 @@ Here you will find a collection of good to have milling formulas and definitions
 | metric |      | imperial |  
 |------|--------|------|  
 |Table feed, $v(mm/min)$|       |Table feed, $(inch/min)$|
-|![Alt text](./images/tablefeedmm_jpg.webp)|       |![Alt text](./images/tablefeedinch_jpg.webp) |  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/tablefeedmm_jpg.webp)|       |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/tablefeedinch_jpg.webp) |  
 |Cutting speed, $(m/min)$|      |Cutting speed, $(ft/min)$|
-|![Alt text](./images/cuttingspeedm_jpg.webp)||![Alt text](./images/cuttingspeed_jpg.webp)|
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/cuttingspeedm_jpg.webp)||![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/cuttingspeed_jpg.webp)|
 |Spindel speed, $n(n/min)$|     |Spindel speed, $(n/rpm)$|  
-|![Alt text](./images/spindlespeedr_jpg.webp)|      |![Alt text](./images/spindlespeedrpm_jpg.webp)|  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/spindlespeedr_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/spindlespeedrpm_jpg.webp)|  
 |Feed per tooth, $f(mm)$|       |Feed per tooth, $f(inch)$|
-|![Alt text](./images/feedpertoothmm_jpg.webp)|     |![Alt text](./images/feedpertoothinch_jpg.webp)  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/feedpertoothmm_jpg.webp)|     |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/feedpertoothinch_jpg.webp)  
 |Feed per revolution, $f(mm/rev)|       |Feed per revolution, $f(inch/rev)|  
-|![Alt text](./images/feedperrevolutionmm_jpg.webp)|        |![Alt text](./images/feedperrevolutioninch_jpg.webp)|  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/feedperrevolutionmm_jpg.webp)|        |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/feedperrevolutioninch_jpg.webp)|  
 |Metal removal rate, $Q (cm/min)$|      |Metal removal rate, $Q (inch/min$)|  
-|![Alt text](./images/metalremovalratecm_jpg.webp)|     |![Alt text](./images/metalremovalrateinch_jpg.webp)|  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/metalremovalratecm_jpg.webp)|     |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/metalremovalrateinch_jpg.webp)|  
 |Net power, $P(kW)$|        |Net power, $P(HP)$|  
-|![Alt text](./images/netpowerkw_jpg.webp)|     |![Alt text](./images/netpowerhp_jpg.webp)|  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/netpowerkw_jpg.webp)|     |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/netpowerhp_jpg.webp)|  
 |Torque, $M(Nm)$|       |Torque, $M(.lbf ft)$|  
-|![Alt text](./images/torquenm_jpg.webp)|       |![Alt text](./images/torquelbf_jpg.webp)|  
+|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/torquenm_jpg.webp)|       |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/torquelbf_jpg.webp)|  
 
 |Symbol |Designation/definition |Metric |Imperial|  
 |---|---|---|---|  
