@@ -7,8 +7,8 @@
 DS1307 rtc;
 
 // Replace with your network credentials
-const char* ssid = "SUPERONLINE-WiFi_5845";
-const char* password = "A7TMW79VUKWH";
+const char* ssid = "";
+const char* password = "";
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 0;  // Adjust according to your timezone
 const int   daylightOffset_sec = 0;  // Adjust if you have daylight saving
