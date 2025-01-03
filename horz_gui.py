@@ -30,6 +30,13 @@ root.title("Mühendislik Hesaplamaları ve Verimlilik")
 
 # Fonksiyonlar
 def calculate_mass():
+    """
+    Kullanıcının girdiği şekil, malzeme ve ölçülerle kütleyi hesaplar.
+    
+    Kullanıcıdan alınan ölçüleri işleyerek, seçilen şekil ve malzeme için 
+    kütle hesaplaması yapar ve sonucu ekranda gösterir. Hatalı girişlerde 
+    kullanıcıya hata mesajı gösterir.
+    """
     try:
         shape = shape_var.get()
         material = material_var.get()
@@ -47,6 +54,7 @@ def calculate_mass():
         # Argümanları tek tek geç
         mass_value = ec.calculate_material_mass(shape, density, *geos)
         mass_result.set(f"Kütle: {mass_value/1000:.3f} kg")
+        print(f"Hesaplanan Kütle: {mass_value/1000:.3f} kg")
     except ValueError as ve:
         messagebox.showerror("Hata", f"Geçersiz ölçü değerleri! Lütfen sayısal değerler girin.\nHata: {str(ve)}")
     except Exception as e:
