@@ -1,121 +1,90 @@
-import PySimpleGUI as sg
-import formuler
-from formuler import calculate_mass, general_turning_calculations, milling_calculations
+import tkinter as tk
+from tkinter import ttk, messagebox
 from EngineeringCalculator import EngineeringCalculator
 import json
+import os
+
 ec = EngineeringCalculator()
-# sg.show_debugger_window(location=(10,10))
 
-sg.set_options(tooltip_font='Courier 10')
+# Tooltips dosyası yükleme
+tooltips_path = os.path.join(os.path.dirname(__file__), 'tooltips.json')
+try:
+    with open(tooltips_path) as f:
+        tips = json.load(f)
+except FileNotFoundError:
+    tips = {"tip01": "", "tip02": "", "tip03": ""}
+    messagebox.showerror("Hata", f"Tooltips dosyası bulunamadı: {tooltips_path}")
 
-#TODO:Tooltip.txt tanımlandı dosyayı geliştir ip uçlarını tamamla !!!
-with open('/Users/hakankilicaslan/GitHub/Machining_Formulas/tooltips.json') as f:
-    # data = f.read()
-    tips = json.load(f)
-    f.close()
+# Malzeme yoğunlukları sözlüğünü kontrol et
+try:
+    material_density = dict(ec.material_density)
+    if not material_density:
+        raise ValueError("Malzeme yoğunlukları boş!")
+except Exception as e:
+    messagebox.showerror("Hata", f"Malzeme yoğunlukları yüklenemedi: {str(e)}")
+    material_density = {}
 
-#TODO: -MASS_CALC_ANS- ve _CUT_CALC_ANS- verisini *.cvs formatına çevir.
+# Ana pencere oluşturma
+root = tk.Tk()
+root.title("Mühendislik Hesaplamaları ve Verimlilik")
 
-
-kolon1 = [
-    [sg.Text("Formüller ve Hesaplamalar")],
-    [sg.Text("Malzeme Yoğunlukları.")],
-    [sg.Listbox(values=list(formuler.material_density.items()),
-                key='-MALZEME-', enable_events=True,
-                tooltip=tips['tip01'], size=(25, 10))],
-]
-kolon2 = [
-    [sg.Text("")],
-    [sg.Text("Malzeme Şekilleri")],
-    [sg.Listbox(values=formuler.shape, key='-SHAPE-',enable_events=True, size=(25, 10))],
-]
-kolon3 = [        
-    [sg.Text("Hesaplanacak Değer.")],
-    [sg.Listbox(values=formuler.definitions,key='-CALC_METOD-',tooltip=tips["tip02"], enable_events=True, size=(25, 11))]
-]
-kolon4 = [
-    [sg.Text("Hesaplama Verisini Gir.")],
-    [sg.Input("", key='-CALC_DATA-',size=(25,1), enable_events=True)],
-    [sg.Output(size=(25,10),key='-CUT_CALC_DATAS-')] # Buraya Kesme data verisi gelecek
-]
-kolon5 = [        
-    [sg.Text("Hesaplanacak Değer.")],
-    [sg.Listbox(values=formuler.definitions,key='-MILLING_CALC_METOD-',tooltip=tips["tip03"], enable_events=True, size=(25, 11))]
-]
-kolon6 = [
-    [sg.Text("Hesaplama Verisini Gir.")],
-    [sg.Input("", key='-MILLING_CALC_DATA-',size=(25,1))],
-    [sg.Output(size=(25,10),key='-MILLING_CUT_CALC_DATAS-')] # Buraya Kesme data verisi gelecek
-]
-layoutTab_1 = [
-    [sg.T("")],
-    [sg.Col(kolon1, p=0), sg.Col(kolon2, p=0)],
-    [sg.Input("Malzeme Ölçülerini Gir.",key='-MALZEME_GEO-', size=(54,1), enable_events=True)],
-    [sg.Output(size=(54, 10), key='-MASS_CALC_ANS-')],
-    [sg.Button("AĞIRLIK HESAPLA")]
-]
-layoutTab_2 = [
-    [sg.T("")],
-    [sg.Col(kolon3, p=0), sg.Col(kolon4, p=0)],
-    [sg.Button("GENERAL TURNING HESAPLA")],
-    [sg.Output(size=(54,10),key='-GTURNING_CUT_CALC_ANS-')]
-]
-layoutTab_3 =[
-    [sg.T("")],
-    [sg.Col(kolon5, p=0), sg.Col(kolon6, p=0)],
-    [sg.Button("MILLING HESAPLA")],
-    [sg.Output(size=(54,10),key='-MILLING_CUT_CALC_ANS-')]
-]
-
-layout = [[sg.TabGroup([[sg.Tab('Ağırlık Hesaplama', layoutTab_1),
-                         sg.Tab('General Turning Formulas and Definitions', layoutTab_2),
-                         sg.Tab('Milling Formulas and Definitions',layoutTab_3)]])],
-                         [sg.Button("ÇIKIŞ")]]          
-
-# Create the window
-window = sg.Window("Mühendislik Hesaplamaları ve Verimlilik.",
-                   layout, return_keyboard_events=True, margins=(10, 10), )
-
-# Create an event loop
-while True:
-    event, values = window.read() # type: ignore
-
-    if event == "ÇIKIŞ" or event == sg.WIN_CLOSED:
-        break
-    elif event == "AĞIRLIK HESAPLA" or '\r' in values['-MALZEME_GEO-']:
-        shape = values['-SHAPE-'][0]
-        density = values['-MALZEME-'][0][1]
-        geos_str = values['-MALZEME_GEO-']
-        geos = [int(geo) for geo in geos_str.split(',')]
-
-        # print(shape, density, geos)
-#         mass_value = calculate_mass(shape, density, *geos)
+# Fonksiyonlar
+def calculate_mass():
+    try:
+        shape = shape_var.get()
+        material = material_var.get()
+        density = float(material_density[material])
+        geos_str = geo_entry.get()
+        
+        # Hem virgül hem boşlukla ayır
+        geos = [float(geo.strip()) for geo in geos_str.replace(',', ' ').split()]
+        
+        print(f"Seçilen Şekil: {shape}")
+        print(f"Seçilen Malzeme: {material}")
+        print(f"Yoğunluk: {density}")
+        print(f"Ölçüler: {geos}")
+        
+        # Argümanları tek tek geç
         mass_value = ec.calculate_material_mass(shape, density, *geos)
+        mass_result.set(f"Kütle: {mass_value/1000:.3f} kg")
+    except ValueError as ve:
+        messagebox.showerror("Hata", f"Geçersiz ölçü değerleri! Lütfen sayısal değerler girin.\nHata: {str(ve)}")
+    except Exception as e:
+        messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
 
-        window['-MASS_CALC_ANS-'].print(shape, density, geos, f'{mass_value/1000000} kg') # type: ignore 
+# Malzeme ve şekil seçimleri
+shape_definitions = list(ec.shape_definitions.keys())
 
-    
-    elif event == "GENERAL TURNING HESAPLA":
-        definition= values['-CALC_METOD-'][0]
-        calc_data_str = values['-CALC_DATA-']
-        calc_data = [int(data) for data in calc_data_str.split(',')]
+material_var = tk.StringVar(value=list(material_density.keys())[0] if material_density else "")
+shape_var = tk.StringVar(value=shape_definitions[0] if shape_definitions else "")
 
-        # print(definition, calc_data)
-        calc = ec.calculate_turning(definition, *calc_data)
-        window['-GTURNING_CUT_CALC_ANS-'].print(definition, calc_data, calc) # type: ignore
+material_label = tk.Label(root, text="Malzeme Yoğunlukları")
+material_label.pack()
+material_menu = ttk.Combobox(root, textvariable=material_var, values=list(material_density.keys()))
+material_menu.pack()
 
-    elif event == "MILLING HESAPLA":
-        definition= values['-MILLING_CALC_METOD-'][0]
-        calc_data_str = values['-MILLING_CALC_DATA-']
-        calc_data = [int(data) for data in calc_data_str.split(',')]
+shape_label = tk.Label(root, text="Malzeme Şekilleri")
+shape_label.pack()
+shape_menu = ttk.Combobox(root, textvariable=shape_var, values=shape_definitions)
+shape_menu.pack()
 
-        # print(definition, calc_data)
-        calc = ec.calculate_milling(definition, *calc_data)
-        window['-MILLING_CUT_CALC_ANS-'].print(definition, calc_data, calc) # type: ignore
+# Ölçü girişi
+geo_label = tk.Label(root, text="Malzeme Ölçülerini Gir.")
+geo_label.pack()
+geo_entry = tk.Entry(root)
+geo_entry.pack()
 
-    elif event == '-CALC_METOD-' and len(values['-CALC_METOD-']): # if a list item is chosen
-        window['-CUT_CALC_DATAS-'].print(values['-CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
+# Sonuç alanı
+mass_result = tk.StringVar()
+mass_result_label = tk.Label(root, textvariable=mass_result)
+mass_result_label.pack()
 
-    elif event == '-MILLING_CALC_METOD-' and len(values['-MILLING_CALC_METOD-']): # if a list item is chosen
-        window['-MILLING_CUT_CALC_DATAS-'].print(values['-MILLING_CALC_METOD-']) # hesaplama için istenen değişkenleri göster.
-window.close()
+# Hesapla butonu
+calculate_button = tk.Button(root, text="AĞIRLIK HESAPLA", command=calculate_mass)
+calculate_button.pack()
+
+# Çıkış butonu
+exit_button = tk.Button(root, text="ÇIKIŞ", command=root.quit)
+exit_button.pack()
+
+root.mainloop()
