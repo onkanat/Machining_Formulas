@@ -201,27 +201,27 @@ class EngineeringCalculator:
         }
 
     def calculate_material_mass(self, shape: str, density: float, *args: Union[float, int]) -> float:
-            """
-            Calculate mass of a given shape with specified material density.
+        """
+        Calculate mass of a given shape with specified material density.
 
-            Args:
-                shape (str): Shape type (e.g., 'triangle', 'circle')
-                density (float): Material density in g/cm³
-                *args: Shape dimensions in mm
+        Args:
+            shape (str): Shape type (e.g., 'triangle', 'circle')
+            density (float): Material density in g/cm³
+            *args: Shape dimensions in mm
 
-            Returns:
-                float: Mass in grams
+        Returns:
+            float: Mass in grams
 
-            Raises:
-                ValueError: If shape is invalid or arguments are incorrect
-            """
-            try:
-                volume = self.shape_definitions[shape](*args)
-                return volume * density
-            except KeyError:
-                raise ValueError(f"Invalid shape: {shape}")
-            except Exception as e:
-                raise ValueError(f"Calculation error: {str(e)}")
+        Raises:
+            ValueError: If shape is invalid or arguments are incorrect
+        """
+        try:
+            volume = self.shape_definitions[shape](*args)
+            return volume * density
+        except KeyError:
+            raise ValueError(f"Invalid shape: {shape}")
+        except Exception as e:
+            raise ValueError(f"Calculation error: {str(e)}")
 
     def calculate_turning(self, definition: str, *args: Union[float, int]) -> dict:
             """
