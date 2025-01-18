@@ -1,4 +1,12 @@
-{"tip01":"This is an intro paragraph. Here are some Swords.\nAnd a second paragraph. More words.\n\n",
-"tip02":"When machining in lathes, turning centers, or multi-task machines,\ncalculating the correct values for different machining parameters\nlike cutting speed and spindle speed is a crucial factor for good\nresults. In this section, you will find the calculations and definitions\nneeded for general turning.\n\nSymbol Designation/definition   Unit, metric (imperial)\n--------------------------------------------------------------\nDm      Machined diameter mm (inch)    mm       (inch)\n",
-"tip03":"Here you will find a collection of good to have milling calculations\n and definitions that are used when it comes to the milling process,\n milling cutters, milling techniques, and more. Knowing how to calculate\n correct cutting speed, feed per tooth, or metal removal rate is crucial\n for good results in any milling operation.\n Symbol Designation/definition Metric Imperial\n ------------------------------------------------------------\n ae Radial depth of cut mm inch ap Axial depth of cut mm inch DCap Cutting diameter at cutting depth ap mm inch Dm Machined diameter (component diameter) mm inch fz Feed per tooth mm inch fn Feed per revolution mm/r inch n Spindle speed rpm rpm Vc Cutting speed m/min ft/min ve Effective cutting speed mm/min inch/min vf Table feed mm/min inch/min zc Number of effective teeth pcs pcs hex Maximum chip thickness mm inch hm Average chip thickness mm inch kc Specific cutting force N/mm2 N/inch2 Pc Net power kW HP Mc Torque Nm lbf ft Q Metal removal rate cm3/min inch3/min KAPR Entering angle degree PSIR Lead angle degree BD Body diameter mm inch DC Cutting diameter mm inch LU Usable length mm inch ZEFF Face affective cutting edge count"
+{
+  "Hesaplama": "Hesaplama konusunu seç\nAğırlık, Tornalama, Frezeleme",
+  "Kesme Hızı": "Kesme hızı, iş parçasının yüzeyinden kesici takımın geçtiği hızdır.",
+  "İş Mili Devri": "İş mili devri, iş milinin dakikadaki dönüş sayısını ifade eder.",
+  "İlerleme Hızı": "İlerleme hızı, kesici takımın iş parçası boyunca ilerleme hızıdır.",
+  "Talaş Debisi": "Talaş debisi, belirli bir süre içinde kesilen malzeme miktarıdır.",
+  "Net Güç": "Net güç, kesme işlemi sırasında kullanılan gücü ifade eder.",
+  "İşleme Süresi": "İşleme süresi, kesme işleminin tamamlanması için geçen süredir.",
+  "Tabla İlerlemesi": "Tabla ilerlemesi, frezeleme sırasında tablanın ilerleme hızıdır.",
+  "Diş Başına İlerleme": "Diş başına ilerleme, her bir dişin iş parçası boyunca ilerleme miktarıdır.",
+  "Tork": "Tork, iş mili tarafından üretilen dönme kuvvetidir."
 }

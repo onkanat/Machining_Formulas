@@ -23,5 +23,6 @@
     "python.formatting.provider": "none",
     "editor.cursorSurroundingLines": 2,
     "workbench.editor.defaultBinaryEditor": "default",
-    "workbench.settings.openDefaultKeybindings": true
+    "workbench.settings.openDefaultKeybindings": true,
+    "pieces.cloudCapabilities": "Blended"
 }

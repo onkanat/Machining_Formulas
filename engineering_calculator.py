@@ -1,3 +1,27 @@
+"""
+Engineering Hesaplayıcı Sınıfı
+
+Bu sınıf çeşitli mühendislik hesaplamalarını gerçekleştirmek için kullanılır.
+
+Özellikler:
+    - Malzeme yoğunluk veritabanı
+    - Şekil hesaplamaları
+    - Torna hesaplamaları
+    - Freze hesaplamaları
+
+İşlevler:
+    calculate_material_mass: Belirli bir şeklin kütlesini hesaplar
+    calculate_turning: Torna parametrelerini hesaplar
+    calculate_milling: Freze parametrelerini hesaplar
+    get_available_calculations: Mevcut hesaplama türlerini listeler
+    get_material_density: Malzeme yoğunluğunu döndürür
+
+Parametreler:
+    material_density (dict): Malzeme-yoğunluk eşleşmeleri
+    shape_definitions (dict): Geometrik şekil formülleri
+    turning_definitions (dict): Torna hesaplama formülleri
+    milling_definitions (dict): Freze hesaplama formülleri
+"""
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Author: Onkanat
