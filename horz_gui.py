@@ -128,7 +128,7 @@ class AdvancedToolTip:
     hide(self):
         Hides the tooltip.
     """
-    
+
     def __init__(self, widget, text='', delay=0.5, background='#ffffe0', foreground='black', font=('tahoma', 8, 'normal')):
         self.widget = widget
         self.text = text
@@ -193,7 +193,6 @@ def load_tooltips(file_path):
 
 class AdvancedCalculator():
     '''A class to create an advanced calculator GUI application for engineering calculations.
-
 Attributes:
     root (tk.Tk): The root window for the calculator application.
     tooltips (dict): A dictionary containing tooltips for various UI elements.
