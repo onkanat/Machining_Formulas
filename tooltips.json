@@ -26,5 +26,9 @@
   "Vf": "Tabla ilerleme hızını mm/dakika cinsinden girin.",
   "ae": "Yarıçapsal kesme derinliğini mm cinsinden girin.",
   "z": "Kesici uç sayısını girin.",
-  "Pc": "Net gücü kW cinsinden girin."
+  "Pc": "Net gücü kW cinsinden girin.",
+  "HesaplamaTuru": "Bir hesaplama türü seçin.",
+  "HesaplamaSecimi": "Bir hesaplama seçin.",
+  "HesaplaButonu": "Seçili hesaplamayı gerçekleştir.",
+  "MalzemeSec": "Bir malzeme seçerek yoğunluğu otomatik doldurun."
 }
