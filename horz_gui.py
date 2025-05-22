@@ -1,135 +1,71 @@
 #! /opt/miniconda3/bin/python
-# -*- coding : utf-8 -*-#
-# Autor:Hakan KILIÇASLAN 2025
+# -*- coding : utf-8 -*-# # Standard Python encoding declaration.
+# Autor:Hakan KILIÇASLAN 2025 # Author and year.
 
-MATERIAL_CALCS = {'Kütle Hesabı': {
-        'params': ['shape', 'density', 'width', 'height', 'length'],
-        'units': ['', 'g/cm³', 'mm', 'mm', 'mm']
+# --- Constants for Calculation Definitions ---
+# MATERIAL_CALCS is kept for 'Kütle Hesabı' (Mass Calculation) which has unique handling for shapes.
+# TURNING_CALCS and MILLING_CALCS are removed as their parameter definitions
+# will now be sourced directly from EngineeringCalculator.
+
+MATERIAL_CALCS = {
+    'Kütle Hesabı': { # Turkish: "Mass Calculation"
+        # 'params' and 'units' for Kütle Hesabı are handled dynamically by _update_material_params
+        # based on shape selection and EngineeringCalculator.get_shape_parameters().
+        # This entry mainly serves to list "Kütle Hesabı" under "Malzeme Hesaplamaları".
     }
 }
 
-TURNING_CALCS = {
-    'Kesme Hızı': {
-        'method': 'Cutting speed',
-        'params': ['Dm', 'n'],
-        'units': ['mm', 'rpm']
-    },
-    'İş Mili Devri': {
-        'method': 'Spindle speed',
-        'params': ['Vc', 'Dm'],
-        'units': ['m/min', 'mm']
-    },
-    'İlerleme Hızı': {
-        'method': 'Feed rate',
-        'params': ['f', 'n'],
-        'units': ['mm/dev', 'rpm']
-    },
-    'Talaş Debisi': {
-        'method': 'Metal removal rate',
-        'params': ['Vc', 'ap', 'fn'],
-        'units': ['m/min', 'mm', 'mm/dev']
-    },
-    'Net Güç': {
-        'method': 'Net power',
-        'params': ['Vc', 'ap', 'fn', 'kc'],  # kc parametresi eklendi
-        'units': ['m/min', 'mm', 'mm/dev', 'N/mm²']
-    },
-    'İşleme Süresi': {
-        'method': 'Machining time',
-        'params': ['L', 'f', 'n'],
-        'units': ['mm', 'mm/dev', 'rpm']
-    }
-}
+# TURNING_CALCS and MILLING_CALCS are now removed.
+# The UI will populate calculation names (keys) for Turning and Milling
+# directly from ec.turning_definitions.keys() and ec.milling_definitions.keys().
+# Parameter details (name, unit, display_text_turkish) for each calculation
+# will be fetched using ec.get_calculation_params().
 
-MILLING_CALCS = {
-    'Tabla İlerlemesi': {
-        'method': 'Table feed',
-        'params': ['fz', 'n', 'ZEFF'],
-        'units': ['mm', 'rpm', 'adet']
-    },
-    'Kesme Hızı': {
-        'method': 'Cutting speed',
-        'params': ['D', 'n'],
-        'units': ['mm', 'rpm']
-    },
-    'İş Mili Devri': {
-        'method': 'Spindle speed',
-        'params': ['Vc', 'D'],
-        'units': ['m/min', 'mm']
-    },
-    'Talaş Debisi': {
-        'method': 'Metal removal rate',
-        'params': ['ap', 'ae', 'Vf'],
-        'units': ['mm', 'mm', 'mm/min']
-    },
-    'Diş Başına İlerleme': {
-        'method': 'Feed per tooth',
-        'params': ['Vf', 'n', 'z'],
-        'units': ['mm/min', 'rpm', 'adet']
-    },
-    'Net Güç': {
-        'method': 'Net power',
-        'params': ['ae', 'ap', 'Vf', 'kc'],  # kc parametresi eklendi
-        'units': ['mm', 'mm', 'mm/min', 'N/mm²']
-    },
-    'Tork': {
-        'method': 'Torque',
-        'params': ['Pc', 'n'],
-        'units': ['kW', 'rpm']
-    }
-}
-
+# --- Standard Library and Third-Party Imports ---
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
-from engineering_calculator import EngineeringCalculator
-import json
-import os
-import markdown
-import re
-import math
-from tkinter import font
+from engineering_calculator import EngineeringCalculator # Core calculation logic.
+import json # For loading tooltips from a JSON file.
+import os # Potentially for path operations (though not explicitly used here).
+import markdown # For rendering markdown text (if used, e.g. in results display).
+import re # Regular expressions, possibly for text processing or input validation.
+import math # For mathematical constants like pi.
+from tkinter import font # For font manipulation if needed.
 
+# --- Global Instance ---
+# Create a single instance of the EngineeringCalculator to be used by the GUI.
 ec = EngineeringCalculator()
+
+# --- GUI Helper Classes ---
 class AdvancedToolTip:
     """
-    A class to create advanced tooltips for Tkinter widgets.
+    Creates a tooltip for a given Tkinter widget that appears after a delay.
+
     Attributes:
-    -----------
-    widget : tkinter.Widget
-        The widget to which the tooltip is attached.
-    text : str
-        The text to be displayed in the tooltip.
-    delay : float
-        The delay in seconds before the tooltip is shown.
-    background : str
-        The background color of the tooltip.
-    foreground : str
-        The foreground (text) color of the tooltip.
-    font : tuple
-        The font of the tooltip text.
-    tooltip : tkinter.Toplevel
-        The tooltip window.
-    id : str
-        The id of the scheduled tooltip.
-    Methods:
-    --------
-    __init__(self, widget, text='', delay=0.5, background='#ffffe0', foreground='black', font=('tahoma', 8, 'normal')):
-        Initializes the AdvancedToolTip with the given parameters.
-    enter(self, event=None):
-        Schedules the tooltip to be shown when the mouse enters the widget.
-    leave(self, event=None):
-        Unschedules and hides the tooltip when the mouse leaves the widget.
-    schedule(self):
-        Schedules the tooltip to be shown after the specified delay.
-    unschedule(self):
-        Unschedules the tooltip if it is scheduled.
-    show(self):
-        Displays the tooltip.
-    hide(self):
-        Hides the tooltip.
+        widget: The Tkinter widget this tooltip is associated with.
+        text (str): The text to display in the tooltip.
+        delay (float): Time in seconds before the tooltip appears.
+        background (str): Background color of the tooltip.
+        foreground (str): Text color of the tooltip.
+        font (tuple): Font configuration for the tooltip text.
+        tooltip (tk.Toplevel | None): The Toplevel window used for the tooltip, or None if not visible.
+        id (str | None): The ID of the scheduled `after` event for showing the tooltip.
     """
 
-    def __init__(self, widget, text='', delay=0.5, background='#ffffe0', foreground='black', font=('tahoma', 8, 'normal')):
+    def __init__(self, widget: tk.Widget, text: str = '', delay: float = 0.5,
+                 background: str = '#ffffe0', foreground: str = 'black',
+                 font: tuple = ('tahoma', 8, 'normal')):
+        """
+        Initializes the AdvancedToolTip.
+
+        Args:
+            widget: The widget to attach the tooltip to.
+            text: The string to display in the tooltip.
+            delay: The delay in seconds before the tooltip is shown on mouse hover.
+            background: The background color of the tooltip window.
+            foreground: The text color within the tooltip.
+            font: The font used for the tooltip's text.
+        """
         self.widget = widget
         self.text = text
         self.delay = delay
@@ -141,504 +77,691 @@ class AdvancedToolTip:
 
         self.widget.bind('<Enter>', self.enter)
         self.widget.bind('<Leave>', self.leave)
-        self.widget.bind('<Button>', self.leave)
+        self.widget.bind('<Button>', self.leave) # Hide tooltip on button click as well.
 
     def enter(self, event=None):
+        """Schedules the tooltip to appear when the mouse enters the widget."""
         self.schedule()
 
     def leave(self, event=None):
+        """Unschedules and hides the tooltip when the mouse leaves the widget."""
         self.unschedule()
         self.hide()
 
     def schedule(self):
-        self.unschedule()
+        """Schedules the `show` method to be called after `self.delay` milliseconds."""
+        self.unschedule() # Cancel any existing schedules.
         self.id = self.widget.after(int(self.delay * 1000), self.show)
 
     def unschedule(self):
+        """Unschedules the näyttäminen of the tooltip if it's currently scheduled."""
         if self.id:
             self.widget.after_cancel(self.id)
             self.id = None
 
     def show(self):
-        if self.tooltip:
+        """Displays the tooltip window near the widget."""
+        if self.tooltip: # If tooltip is already shown, do nothing.
             return
 
-        x = y = 0
-        x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
+        # Calculate tooltip position
+        x, y, _, _ = self.widget.bbox("insert") # Get widget bounding box.
+        x += self.widget.winfo_rootx() + 25     # Offset from widget's root window position.
         y += self.widget.winfo_rooty() + 20
 
+        # Create a Toplevel window for the tooltip.
         self.tooltip = tk.Toplevel(self.widget)
-        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_overrideredirect(True) # Remove window decorations (border, title bar).
 
+        # Create a label within the Toplevel to display the tooltip text.
         label = tk.Label(self.tooltip, text=self.text,
                       justify='left',
                       background=self.background,
                       foreground=self.foreground,
                       font=self.font,
-                      relief='solid',
+                      relief='solid', # Add a border to the tooltip.
                       borderwidth=1)
         label.pack()
 
-        self.tooltip.wm_geometry(f"+{x}+{y}")
+        self.tooltip.wm_geometry(f"+{x}+{y}") # Position the tooltip window.
 
     def hide(self):
+        """Hides and destroys the tooltip window."""
         if self.tooltip:
             self.tooltip.destroy()
             self.tooltip = None
 
-def load_tooltips(file_path):
-    with open(file_path, 'r', encoding='utf-8') as file:
-        return json.load(file)
+def load_tooltips(file_path: str) -> dict:
+    """
+    Loads tooltip data from a JSON file.
 
-class AdvancedCalculator():
-    '''A class to create an advanced calculator GUI application for engineering calculations.
-Attributes:
-    root (tk.Tk): The root window for the calculator application.
-    tooltips (dict): A dictionary containing tooltips for various UI elements.
-    calc_types (dict): A dictionary containing different types of calculations.
-    main_frame (ttk.Frame): The main frame of the application.
-    left_frame (ttk.Frame): The left frame containing calculation type and parameters.
-    right_frame (ttk.Frame): The right frame displaying the results.
-    result_text (tk.scrolledtext.ScrolledText): The text area for displaying results.
-    input_fields (dict): A dictionary to store input fields for parameters.
-    shape_names (dict): A dictionary mapping shape keys to their names.
-    reverse_shape_names (dict): A dictionary mapping shape names to their keys.
-    params_container (ttk.Frame): A frame to contain parameter input fields.
-    shape_combo (ttk.Combobox): A combobox for selecting shapes.
-    execute_mode (bool): A flag to indicate if execute mode is enabled.
+    Args:
+        file_path (str): The path to the JSON file containing tooltip definitions.
 
-Methods:
-    __init__(self, root, tooltips):
-        Initializes the AdvancedCalculator with the given root window and tooltips.
+    Returns:
+        dict: A dictionary where keys are identifiers and values are tooltip texts.
+              Returns an empty dictionary if the file is not found or is invalid.
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        print(f"Warning: Tooltip file not found at {file_path}")
+        return {}
+    except json.JSONDecodeError:
+        print(f"Warning: Could not decode JSON from tooltip file: {file_path}")
+        return {}
 
-    update_calculations(self, event=None):
+class AdvancedCalculator:
+    """
+    Main class for the Advanced Engineering Calculator GUI.
 
-    calculate(self):
+    This class sets up the Tkinter interface, handles user input,
+    interacts with the `EngineeringCalculator` for performing calculations,
+    and displays the results.
 
-    calculate_material_mass(self, calculation, values):
-        Calculates the material mass based on the selected shape and parameters.
-
-    calculate_turning(self, calculation, values):
-        Calculates turning parameters based on the selected calculation and parameters.
-
-    calculate_milling(self, calculation, values):
-        Calculates milling parameters based on the selected calculation and parameters.
-
-    perform_calculation(self, calc_type, calculation, values):
-
-    enable_execute_mode(self, event):
-
-    execute_calculation(self, event):
-
-    update_input_fields(self, event=None):
-
-    update_result_display(self, result_data):
-'''
-    def __init__(self, root,tooltips):
-        '''
-            Initializes the AdvancedCalculator with the given root window and tooltips.
-
-            tooltips: A dictionary containing tooltips for various UI elements.
-
-        Key Bindings:
-            <Control-e>: Enables execute mode.
-            <Control-c>: Executes the calculation.
-        '''
-        super().__init__()
-
-        self.tooltips = tooltips
-
+    Attributes:
+        root (tk.Tk): The main Tkinter window.
+        tooltips (dict): Tooltip texts loaded from an external file.
+        calc_types (dict): Defines the structure of available calculation types and their specific calculations.
+        main_frame (ttk.Frame): The primary container frame for all UI elements.
+        left_frame (ttk.Frame): Frame for input controls (calculation type, parameters).
+        right_frame (ttk.Frame): Frame for displaying results.
+        result_text (scrolledtext.ScrolledText): Text area for showing calculation details and results.
+        input_fields (dict): Stores Tkinter Entry widgets for dynamic parameter inputs.
+                             Keys are parameter names (Turkish), values are Entry widgets.
+        reverse_shape_names (dict): Maps Turkish shape names back to their internal keys (e.g., "Üçgen": "triangle").
+                                    Populated dynamically.
+        params_container (ttk.Frame): A sub-frame within `left_frame` to hold dynamically generated parameter fields.
+        shape_combo (ttk.Combobox | None): Combobox for selecting shapes in material calculations. Initialized when needed.
+        execute_mode (bool): Flag to enable/disable a special code execution mode in the results area.
+    """
+    def __init__(self, root: tk.Tk, tooltips: dict):
         """
-        Initializes the AdvancedCalculator with the given root window.
+        Initializes the AdvancedCalculator GUI.
+
+        Sets up the main window, frames, widgets for selecting calculation types,
+        parameter input areas, and the result display area.
 
         Args:
-            root: The root window for the calculator application.
+            root (tk.Tk): The root Tkinter window for the application.
+            tooltips (dict): A dictionary containing tooltip strings for UI elements.
         """
+        super().__init__() # Though not inheriting from a specific base class here, good practice if refactored.
+
         self.root = root
-        self.root.title("Mühendislik Hesaplamaları ve Analiz")
-        self.root.geometry("1200x800")
+        self.tooltips = tooltips
+        self.root.title("Mühendislik Hesaplamaları ve Analiz Uygulaması") # Turkish: Engineering Calculations and Analysis Application
+        self.root.geometry("1200x800") # Set initial window size.
 
+        # --- Styling ---
         style = ttk.Style()
-        style.configure('Calc.TFrame', background='#f0f0f0')
-        style.configure('Calc.TLabel', background='#f0f0f0', font=('Arial', 10))
-        style.configure('Calc.TButton', font=('Arial', 10))
+        style.configure('Calc.TFrame', background='#f0f0f0') # Custom style for frames.
+        style.configure('Calc.TLabel', background='#f0f0f0', font=('Arial', 10)) # Custom style for labels.
+        style.configure('Calc.TButton', font=('Arial', 10)) # Custom style for buttons.
 
+        # --- Main Layout Frames ---
         self.main_frame = ttk.Frame(root, style='Calc.TFrame')
         self.main_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
+        # Left frame for input controls
         self.left_frame = ttk.Frame(self.main_frame, style='Calc.TFrame')
         self.left_frame.pack(side='left', fill='y', padx=5)
 
-        self.calc_types = {
-            'Malzeme Hesaplamaları': MATERIAL_CALCS,
-            'Tornalama Hesaplamaları': TURNING_CALCS,
-            'Frezeleme Hesaplamaları': MILLING_CALCS
-        }
-
-        ttk.Label(self.left_frame, text="Hesaplama Türü", style='Calc.TLabel').pack(pady=5)
-        self.calc_type = ttk.Combobox(self.left_frame, values=list(self.calc_types.keys()))
-        self.calc_type.pack(fill='x', pady=5)
-        AdvancedToolTip(self.calc_type, self.tooltips.get("Hesaplama", "Tooltip bulunamadı"))
-        self.calc_type.bind('<<ComboboxSelected>>', self.update_calculations)
-
-        ttk.Label(self.left_frame, text="Hesaplama", style='Calc.TLabel').pack(pady=5)
-        self.calculation = ttk.Combobox(self.left_frame)
-        self.calculation.pack(fill='x', pady=5)
-
-        self.params_frame = ttk.Frame(self.left_frame)
-        self.params_frame.pack(fill='x', pady=10)
-
-        self.right_frame = ttk.Frame(self.main_frame)
+        # Right frame for results
+        self.right_frame = ttk.Frame(self.main_frame) # Default style
         self.right_frame.pack(side='right', fill='both', expand=True, padx=5)
 
+        # --- Static UI Elements in Left Frame ---
+        # Populate calculation types. Turning and Milling calculation names (keys)
+        # are fetched directly from the EngineeringCalculator instance.
+        # The empty dictionaries {} as values are placeholders; actual parameter details
+        # will be fetched on demand by `update_input_fields` using `ec.get_calculation_params`.
+        self.calc_types = {
+            'Malzeme Hesaplamaları': MATERIAL_CALCS, # Turkish: "Material Calculations"
+            'Tornalama Hesaplamaları': {key: {} for key in ec.turning_definitions.keys()}, # Turkish: "Turning Calculations"
+            'Frezeleme Hesaplamaları': {key: {} for key in ec.milling_definitions.keys()}  # Turkish: "Milling Calculations"
+        }
+
+        ttk.Label(self.left_frame, text="Hesaplama Türü:", style='Calc.TLabel').pack(pady=(5,0), anchor='w') # Turkish: "Calculation Type:"
+        self.calc_type = ttk.Combobox(self.left_frame, values=list(self.calc_types.keys()), state="readonly")
+        self.calc_type.pack(fill='x', pady=(0,10))
+        AdvancedToolTip(self.calc_type, self.tooltips.get("HesaplamaTuru", "Bir hesaplama türü seçin.")) # Turkish: "Select a calculation type."
+        self.calc_type.bind('<<ComboboxSelected>>', self.update_calculations) # Event binding
+
+        ttk.Label(self.left_frame, text="Hesaplama Seçimi:", style='Calc.TLabel').pack(pady=(5,0), anchor='w') # Turkish: "Calculation Selection:"
+        self.calculation = ttk.Combobox(self.left_frame, state="readonly")
+        self.calculation.pack(fill='x', pady=(0,10))
+        AdvancedToolTip(self.calculation, self.tooltips.get("HesaplamaSecimi", "Bir hesaplama seçin.")) # Turkish: "Select a calculation."
+        # Note: self.calculation.bind is set in update_calculations
+
+        # Frame to hold dynamically generated parameter input fields
+        self.params_frame = ttk.Frame(self.left_frame, style='Calc.TFrame')
+        self.params_frame.pack(fill='x', pady=5)
+        self.params_container = ttk.Frame(self.params_frame, style='Calc.TFrame') # Inner container for parameters
+        self.params_container.pack(fill='x', expand=True)
+
+
+        # --- Result Display Area in Right Frame ---
         self.result_text = scrolledtext.ScrolledText(self.right_frame, wrap=tk.WORD,
-                                                   width=60, height=30,
-                                                   font=('Courier', 12))
+                                                   width=80, height=35, # Adjusted size
+                                                   font=('Courier New', 11)) # Using Courier for code-like display
         self.result_text.pack(fill='both', expand=True)
+        # Initial content or placeholder for the results area
+        self.result_text.insert(tk.END, "# Hesaplama Sonuçları ve Detayları\n\nBurada hesaplama sonuçlarınız gösterilecektir.\n") # Turkish: Calculation Results and Details. Your calculation results will be displayed here.
 
-        self.root.bind('<Control-e>', self.enable_execute_mode)
-        self.root.bind('<Control-c>', self.execute_calculation)
+        # --- Global Key Bindings ---
+        self.root.bind('<Control-e>', self.enable_execute_mode)  # Enable code execution mode
+        self.root.bind('<Control-c>', self.execute_calculation) # Execute selected code
 
-        ttk.Button(self.left_frame, text="HESAPLA",
-                  command=self.calculate, style='Calc.TButton').pack(pady=10)
+        # --- Calculate Button ---
+        self.calculate_button = ttk.Button(self.left_frame, text="HESAPLA",
+                                           command=self.calculate, style='Calc.TButton') # Turkish: "CALCULATE"
+        self.calculate_button.pack(pady=20, fill='x', ipady=5) # Made more prominent
+        AdvancedToolTip(self.calculate_button, self.tooltips.get("HesaplaButonu", "Seçili hesaplamayı gerçekleştir.")) # Turkish: "Perform the selected calculation."
+
+
+        # --- Initialize dynamic fields ---
+        self.input_fields = {}
+        self.reverse_shape_names = {}
+        self.shape_combo = None # Will be created in update_input_fields if needed
+        self.execute_mode = False # Flag for the experimental code execution mode
+
+        # Initialize first calculation type
+        if list(self.calc_types.keys()):
+            self.calc_type.set(list(self.calc_types.keys())[0])
+            self.update_calculations()
+
 
     def update_calculations(self, event=None):
         """
-        Updates the available calculations based on the selected calculation type.
+        Updates the second combobox (specific calculation) based on the selected calculation type.
+        Called when the `self.calc_type` combobox value changes.
 
         Args:
-            event: The event that triggered this method (default is None).
+            event: The Tkinter event that triggered this method (usually `<<ComboboxSelected>>`). Default is None.
         """
-        calc_type = self.calc_type.get()
-        if calc_type in self.calc_types:
-            calcs = self.calc_types[calc_type]
-            self.calculation['values'] = list(calcs.keys())
-            self.calculation.set(list(calcs.keys())[0])
+        selected_calc_type = self.calc_type.get()
+        if selected_calc_type in self.calc_types:
+            # Get the dictionary of specific calculations for the selected type
+            available_calcs = self.calc_types[selected_calc_type]
+            self.calculation['values'] = list(available_calcs.keys()) # Update values of the second combobox
+            
+            if list(available_calcs.keys()): # If there are calculations available
+                self.calculation.set(list(available_calcs.keys())[0]) # Set to the first one
+                self.calculation.config(state="readonly")
+            else: # No calculations for this type
+                self.calculation.set("")
+                self.calculation.config(state="disabled")
+
+            # Bind event for updating input fields when a specific calculation is chosen
             self.calculation.bind('<<ComboboxSelected>>', self.update_input_fields)
-            self.update_input_fields()
+            self.update_input_fields() # Trigger update for the currently selected calculation
+        else: # Should not happen if combobox is properly populated
+            self.calculation['values'] = []
+            self.calculation.set("")
+            self.calculation.config(state="disabled")
+            self.update_input_fields() # Clear input fields
 
     def calculate(self):
         """
-        Performs the calculation based on the selected parameters and displays the result.
+        Handles the main calculation logic when the "HESAPLA" button is clicked.
+        
+        It retrieves selected calculation type, specific calculation, and input values,
+        then calls `perform_calculation` and updates the result display.
+        Includes error handling for invalid inputs or calculation issues.
         """
         try:
-            calc_type = self.calc_type.get()
-            calculation = self.calculation.get()
+            calc_type = self.calc_type.get() # Selected calculation category (e.g., "Malzeme Hesaplamaları")
+            calculation_name = self.calculation.get() # Specific calculation selected (e.g., "Kütle Hesabı")
 
-            values = {}
-            for param, field in self.input_fields.items():
-                value = field.get()
+            # Validate that a calculation is actually selected
+            if not calc_type or not calculation_name:
+                messagebox.showwarning("Uyarı", "Lütfen bir hesaplama türü ve hesaplama seçin.") # Turkish: "Warning", "Please select a calculation type and a calculation."
+                return
+
+            # Collect input values from dynamically generated fields
+            input_values = {}
+            for param_key, field_widget in self.input_fields.items():
+                value_str = field_widget.get()
+                if not value_str: # Check for empty field
+                    messagebox.showerror("Hata", f"'{param_key}' için değer girilmemiş.") # Turkish: "Error", "Value not entered for '{param_key}'."
+                    return
                 try:
-                    if param != 'Şekil':
-                        value = float(value)
+                    if param_key != 'Şekil': # 'Şekil' (Shape) is a string from combobox
+                        input_values[param_key] = float(value_str)
+                    else:
+                        input_values[param_key] = value_str # Shape name is a string
                 except ValueError:
-                    raise ValueError(f"{param} için geçerli bir değer giriniz!")
-                values[param] = value
-
-            result = self.perform_calculation(calc_type, calculation, values)
+                    # Error message if conversion to float fails for numerical inputs
+                    messagebox.showerror("Hata", f"'{param_key}' için geçersiz sayısal değer: {value_str}") # Turkish: "Error", "Invalid numerical value for '{param_key}': {value_str}"
+                    return
+            
+            # Perform the calculation using the collected data
+            calculation_result = self.perform_calculation(calc_type, calculation_name, input_values)
+            
+            # Update the display with the results
             self.update_result_display({
-                'calculation': calculation,
-                'parameters': values,
-                'result': result
+                'calculation': calculation_name,
+                'parameters': input_values, # Pass collected values for display
+                'result': calculation_result
             })
 
-        except Exception as e:
-            messagebox.showerror("Hata", str(e))
+        except ValueError as ve: # Catch specific ValueErrors raised by our logic or calculator
+            messagebox.showerror("Giriş Hatası", str(ve)) # Turkish: "Input Error"
+        except Exception as e: # Catch any other unexpected errors during calculation
+            messagebox.showerror("Hesaplama Hatası", f"Beklenmedik bir hata oluştu: {str(e)}") # Turkish: "Calculation Error", "An unexpected error occurred: {str(e)}"
 
-    def calculate_material_mass(self, calculation, values):
-        shape_names = {
-            'triangle': 'Üçgen',
-            'circle': 'Daire',
-            'square': 'Kare',
-            'rectangle': 'Dikdörtgen',
-            'trapezium': 'Yamuk',
-            'parallelogram': 'Paralelkenar',
-            'semi-circle': 'Yarım Daire',
-            'rhombus': 'Eşkenar Dörtgen',
-            'kite': 'Uçurtma',
-            'pentagon': 'Beşgen',
-            'hexagon': 'Altıgen',
-            'octagon': 'Sekizgen',
-            'nonagon': 'Dokuzgen',
-            'decagon': 'Ongen'
-        }
 
-        shape = values['Şekil']
-        shape_key = [k for k, v in shape_names.items() if v == shape][0]
-        density = float(values['Yoğunluk'])
-
-        if shape_key in ['circle', 'semi-circle']:
-            result = ec.calculate_material_mass(
-                shape_key,
-                density,
-                float(values['Yarıçap']),
-                float(values['Uzunluk'])
-            )
-        else:
-            result = ec.calculate_material_mass(
-                shape_key,
-                density,
-                float(values['Genişlik']),
-                float(values['Yükseklik']),
-                float(values['Uzunluk'])
-            )
-        return f"{result:.2f} gram"
-
-    def calculate_turning(self, calculation, values):
-        method = self.calc_types['Tornalama Hesaplamaları'][calculation]['method']
-        params = [float(values[p]) for p in self.calc_types['Tornalama Hesaplamaları'][calculation]['params']]
-        result = ec.calculate_turning(method, *params)
-
-        units = {
-            'Kesme Hızı': 'm/min',
-            'İş Mili Devri': 'rpm',
-            'İlerleme Hızı': 'mm/min',
-            'Talaş Debisi': 'cm³/min',
-            'Net Güç': 'kW',
-            'İşleme Süresi': 'min'
-        }
-
-        return f"{result['value']:.2f} {units[calculation]}"
-
-    def calculate_milling(self, calculation, values):
-        method = self.calc_types['Frezeleme Hesaplamaları'][calculation]['method']
-        params = [float(values[p]) for p in self.calc_types['Frezeleme Hesaplamaları'][calculation]['params']]
-        result = ec.calculate_milling(method, *params)
-
-        units = {
-            'Tabla İlerlemesi': 'mm/min',
-            'Kesme Hızı': 'm/min',
-            'İş Mili Devri': 'rpm',
-            'Talaş Debisi': 'cm³/min',
-            'Diş Başına İlerleme': 'mm',
-            'Net Güç': 'kW',
-            'Tork': 'Nm'
-        }
-
-        return f"{result['value']:.2f} {units[calculation]}"
-
-    def perform_calculation(self, calc_type, calculation, values):
+    def calculate_material_mass(self, calculation_name: str, input_params: dict) -> str:
         """
-        Performs the specific calculation based on the calculation type and parameters.
+        Calculates material mass using `EngineeringCalculator.calculate_material_mass`.
 
         Args:
-            calc_type: The type of calculation to perform.
-            calculation: The specific calculation to perform.
-            values: A dictionary of parameter values for the calculation.
+            calculation_name (str): The name of the calculation (e.g., "Kütle Hesabı"). Not directly used here
+                                   as this method is specific to mass calculation.
+            input_params (dict): Dictionary of input parameters from the GUI, keyed by Turkish names.
+                                 Expected keys: 'Şekil', 'Yoğunluk', and shape-specific dimension keys.
 
         Returns:
-            The result of the calculation as a formatted string.
+            str: A formatted string representing the calculated mass and its unit (grams).
+        
+        Raises:
+            ValueError: If required parameters are missing or if `EngineeringCalculator` raises an error.
         """
-        if calc_type == 'Malzeme Hesaplamaları':
-            return self.calculate_material_mass(calculation, values)
-        elif calc_type == 'Tornalama Hesaplamaları':
-            return self.calculate_turning(calculation, values)
-        elif calc_type == 'Frezeleme Hesaplamaları':
-            return self.calculate_milling(calculation, values)
+        shape_turkish_name = input_params['Şekil'] # Turkish name from Combobox
+        
+        # Ensure reverse_shape_names is populated (should be by update_input_fields)
+        if not hasattr(self, 'reverse_shape_names') or not self.reverse_shape_names:
+            # This is a fallback, ideally self.reverse_shape_names is always up-to-date.
+            self.reverse_shape_names = {v: k for k, v in ec.get_available_shapes().items()}
+
+        shape_key = self.reverse_shape_names.get(shape_turkish_name) # Convert Turkish name to internal key
+        if not shape_key:
+            raise ValueError(f"Geçersiz şekil adı: {shape_turkish_name}") # Turkish: "Invalid shape name"
+        
+        density = float(input_params['Yoğunluk']) # Turkish: "Density"
+        
+        # Dynamically get the list of required dimension parameters for the selected shape_key
+        # from EngineeringCalculator (e.g., ['width', 'height'] or ['radius'])
+        param_names_from_calc = ec.get_shape_parameters(shape_key)
+        
+        # Map these English parameter names to the Turkish keys used in `input_params`
+        # This mapping is crucial for fetching correct values from the GUI's input_params dictionary.
+        param_to_gui_key_map = { # English (from calculator) to Turkish (GUI key)
+            'radius': 'Yarıçap',      # Radius
+            'width': 'Genişlik',       # Width
+            'height': 'Yükseklik',     # Height
+            'length1': 'Uzunluk 1',    # Length 1
+            'height1': 'Yükseklik 1',  # Height 1
+            'length2': 'Uzunluk 2',    # Length 2
+            'height2': 'Yükseklik 2',  # Height 2
+            'diagonal1': 'Köşegen 1',  # Diagonal 1
+            'diagonal2': 'Köşegen 2',  # Diagonal 2
+        }
+
+        args_for_calculator = [] # List to hold dimension values in the order expected by EngineeringCalculator
+        for p_name_english in param_names_from_calc:
+            # Find the Turkish GUI key for the current English parameter name
+            gui_key_turkish = param_to_gui_key_map.get(p_name_english, p_name_english.capitalize()) # Fallback to capitalized English name if no direct map
+            if gui_key_turkish not in input_params:
+                raise ValueError(f"'{gui_key_turkish}' parametresi için değer eksik.") # Turkish: "Missing value for parameter '{gui_key_turkish}'."
+            args_for_calculator.append(float(input_params[gui_key_turkish]))
+        
+        # Append the common 'Uzunluk' (Length) parameter, which is always present for extrusion
+        if 'Uzunluk' not in input_params:
+             raise ValueError("'Uzunluk' parametresi için değer eksik.") # Turkish: "Missing value for parameter 'Uzunluk'."
+        args_for_calculator.append(float(input_params['Uzunluk']))
+
+        # Call the core calculation method from EngineeringCalculator
+        # Note: EngineeringCalculator.calculate_material_mass now handles mm³ to cm³ conversion.
+        mass_value = ec.calculate_material_mass(shape_key, density, *args_for_calculator)
+        return f"{mass_value:.2f} gram" # Result formatted to two decimal places
+
+
+    def calculate_turning(self, calculation_name: str, input_params: dict) -> str:
+        """
+        Calculates turning parameters using `EngineeringCalculator.calculate_turning`.
+
+        Args:
+            calculation_name (str): The Turkish name of the specific turning calculation.
+            input_params (dict): Dictionary of input parameters from the GUI, keyed by parameter names
+                                 (which match `TURNING_CALCS[calculation_name]['params']`).
+
+        Returns:
+            str: A formatted string representing the calculated value and its unit.
+        """
+        # `calculation_name` is the Turkish display name, which is also the method key in ec.definitions
+        # `input_params` are now keyed by internal English names (e.g., 'Dm', 'n')
+        
+        # Fetch parameter definitions to know the order and internal names
+        param_info_list = ec.get_calculation_params('turning', calculation_name)
+        
+        args_for_calculator = []
+        for param_info in param_info_list:
+            internal_name = param_info['name']
+            if internal_name not in input_params:
+                raise ValueError(f"'{param_info['display_text_turkish']}' parametresi için değer eksik.")
+            args_for_calculator.append(float(input_params[internal_name]))
+        
+        # The `calculation_name` (e.g., "Kesme Hızı") is directly used as the method_key
+        result_dict = ec.calculate_turning(calculation_name, *args_for_calculator)
+        return f"{result_dict['value']:.2f} {result_dict['units']}"
+
+
+    def calculate_milling(self, calculation_name: str, input_params: dict) -> str:
+        """
+        Calculates milling parameters using `EngineeringCalculator.calculate_milling`.
+        The `input_params` dictionary is now keyed by internal English parameter names.
+
+        Args:
+            calculation_name (str): The Turkish name (which is also the method key) of the specific milling calculation.
+            input_params (dict): Dictionary of input parameters from the GUI, keyed by internal English parameter names.
+
+        Returns:
+            str: A formatted string representing the calculated value and its unit.
+        """
+        # `calculation_name` is the Turkish display name / method key.
+        # `input_params` are keyed by internal English names.
+
+        param_info_list = ec.get_calculation_params('milling', calculation_name)
+        
+        args_for_calculator = []
+        for param_info in param_info_list:
+            internal_name = param_info['name']
+            if internal_name not in input_params:
+                raise ValueError(f"'{param_info['display_text_turkish']}' parametresi için değer eksik.")
+            args_for_calculator.append(float(input_params[internal_name]))
+
+        result_dict = ec.calculate_milling(calculation_name, *args_for_calculator)
+        return f"{result_dict['value']:.2f} {result_dict['units']}"
+
+
+    def perform_calculation(self, calc_category: str, calc_name: str, params_values: dict) -> str:
+        """
+        Delegates to the appropriate calculation method based on the selected category.
+
+        This acts as a dispatcher to specific `calculate_...` methods.
+
+        Args:
+            calc_category (str): The category of calculation (e.g., "Malzeme Hesaplamaları").
+            calc_name (str): The specific name of the calculation (e.g., "Kütle Hesabı").
+            params_values (dict): A dictionary of parameter values collected from the GUI.
+
+        Returns:
+            str: The formatted result string from the specific calculation method.
+        
+        Raises:
+            ValueError: If the `calc_category` is unknown.
+        """
+        if calc_category == 'Malzeme Hesaplamaları': # Turkish: "Material Calculations"
+            return self.calculate_material_mass(calc_name, params_values)
+        elif calc_category == 'Tornalama Hesaplamaları': # Turkish: "Turning Calculations"
+            return self.calculate_turning(calc_name, params_values)
+        elif calc_category == 'Frezeleme Hesaplamaları': # Turkish: "Milling Calculations"
+            return self.calculate_milling(calc_name, params_values)
         else:
-            raise ValueError(f"Unknown calculation type: {calc_type}")
+            # This case should ideally not be reached if GUI is set up correctly with calc_types
+            raise ValueError(f"Bilinmeyen hesaplama kategorisi: {calc_category}") # Turkish: "Unknown calculation category"
 
-    def enable_execute_mode(self, event):
+    def enable_execute_mode(self, event: tk.Event = None):
         """
-        Enables the execute mode for evaluating code snippets in the result text area.
+        Enables an experimental 'execute mode' for the result text area.
+        
+        This mode allows selected text in the results area to be evaluated as Python code.
+        Changes the background color of the result text area to indicate the mode.
 
         Args:
-            event: The event that triggered this method.
+            event: The Tkinter event that triggered this method (e.g., a key press). Default is None.
         """
-        self.result_text.config(bg='#ffffd0')
+        self.result_text.config(bg='#ffffd0') # Light yellow background to indicate execute mode.
         self.execute_mode = True
+        self.result_text.insert(tk.END, "\n\n--- Execute Modu Aktif --- \nKod seçip Ctrl+C ile çalıştırın.\n") # Turkish: Execute Mode Active. Select code and run with Ctrl+C
 
-    def execute_calculation(self, event):
+    def execute_calculation(self, event: tk.Event = None):
         """
-        Executes the selected code snippet from the result text area if execute mode is enabled.
+        Executes Python code selected in the result text area if 'execute mode' is active.
+
+        The code is evaluated in a limited scope with `EngineeringCalculator` instance (`ec` or `calc`)
+        and `math.pi` available. The result of the evaluation is appended to the text area.
 
         Args:
-            event: The event that triggered this method.
+            event: The Tkinter event (e.g., a key press like Ctrl+C). Default is None.
         """
         if not hasattr(self, 'execute_mode') or not self.execute_mode:
-            return
+            return # Do nothing if execute mode is not enabled.
 
         try:
-            code = self.result_text.get('sel.first', 'sel.last')
-            if code:
-                local_vars = {'calc': ec, 'ec': ec, 'pi': math.pi}
-                result = eval(code, {'__builtins__': {}}, local_vars)
-                self.result_text.insert('insert', f'\nSonuç: {result}')
+            # Get the selected text from the result display area.
+            selected_code = self.result_text.get('sel.first', 'sel.last')
+            if selected_code:
+                # Define a limited local scope for eval().
+                # Provides access to the calculator instance and math.pi.
+                local_scope = {'calc': ec, 'ec': ec, 'pi': math.pi}
+                
+                # Evaluate the selected code.
+                # WARNING: eval() can be dangerous if the input string is not controlled.
+                # Here it's assumed the user is intentionally running code they might have pasted or typed.
+                evaluation_result = eval(selected_code, {'__builtins__': {}}, local_scope) # Restricted builtins for safety.
+                
+                self.result_text.insert('insert', f'\n>>> {selected_code}\nSonuç: {evaluation_result}\n') # Turkish: Result
+            else:
+                self.result_text.insert(tk.END, "\nSeçili kod yok.\n") # Turkish: No code selected.
         except Exception as e:
-            messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
+            # Display any error during code execution in a messagebox and in the text area.
+            error_message = f"Kod çalıştırma hatası: {str(e)}" # Turkish: Code execution error
+            messagebox.showerror("Hata", error_message)
+            self.result_text.insert('insert', f'\nHata: {error_message}\n')
         finally:
+            # Always disable execute mode and reset background after an attempt.
             self.execute_mode = False
-            self.result_text.config(bg='white')
+            self.result_text.config(bg='white') # Reset background to normal.
+            self.result_text.insert(tk.END, "\n--- Execute Modu Devre Dışı ---\n") # Turkish: Execute Mode Deactivated
 
-    def update_input_fields(self, event=None):
+
+    def update_input_fields(self, event: tk.Event = None):
         """
-        Updates the input fields based on the selected calculation type and calculation.
+        Dynamically updates the input fields in the GUI based on the selected calculation type and specific calculation.
+
+        This method is crucial for adapting the UI to different calculations, especially for material mass
+        calculations where shapes require different dimension parameters.
 
         Args:
-            event: The event that triggered this method (default is None).
+            event: The Tkinter event that triggered this method (e.g., `<<ComboboxSelected>>`). Default is None.
         """
-        # Tüm mevcut widget'ları temizle
-        for widget in self.params_frame.winfo_children():
+        # Clear any existing widgets in the params_container frame.
+        for widget in self.params_container.winfo_children():
             widget.destroy()
+        
+        self.input_fields = {} # Reset the dictionary holding input field widgets.
 
-        self.input_fields = {}  # input_fields'ı sıfırla
+        calc_category = self.calc_type.get()
+        selected_calculation = self.calculation.get()
 
-        calc_type = self.calc_type.get()
-        calculation = self.calculation.get()
+        if not calc_category or not selected_calculation: # If no calculation is selected (e.g. at startup or after clearing)
+            return
 
-        if calc_type == 'Malzeme Hesaplamaları' and calculation == 'Kütle Hesabı':
-            self.shape_names = {
-                'triangle': 'Üçgen',
-                'circle': 'Daire',
-                'square': 'Kare',
-                'rectangle': 'Dikdörtgen',
-                'trapezium': 'Yamuk',
-                'parallelogram': 'Paralelkenar',
-                'semi-circle': 'Yarım Daire',
-                'rhombus': 'Eşkenar Dörtgen',
-                'kite': 'Uçurtma',
-                'pentagon': 'Beşgen',
-                'hexagon': 'Altıgen',
-                'octagon': 'Sekizgen',
-                'nonagon': 'Dokuzgen',
-                'decagon': 'Ongen'
+        # --- Handling Material Mass Calculation (Dynamic fields based on shape) ---
+        if calc_category == 'Malzeme Hesaplamaları' and selected_calculation == 'Kütle Hesabı': # Turkish: "Material Calculations", "Mass Calculation"
+            available_shapes_map = ec.get_available_shapes() # Get {key: TurkishName} map from calculator
+            self.reverse_shape_names = {v: k for k, v in available_shapes_map.items()} # For lookup: TurkishName -> key
+            shape_display_names = list(available_shapes_map.values())
+
+            # --- Shape Selection UI ---
+            shape_frame = ttk.Frame(self.params_container, style='Calc.TFrame')
+            shape_frame.pack(fill='x', pady=2, padx=5)
+            ttk.Label(shape_frame, text="Şekil:", style='Calc.TLabel').pack(side='left', padx=(0,5)) # Turkish: "Shape:"
+            
+            if not self.shape_combo: # Create combobox if it doesn't exist
+                 self.shape_combo = ttk.Combobox(shape_frame, values=shape_display_names, state="readonly")
+            else: # Update values if it exists
+                 self.shape_combo['values'] = shape_display_names
+            
+            self.shape_combo.pack(side='left', fill='x', expand=True)
+            if shape_display_names:
+                self.shape_combo.set(shape_display_names[0]) # Default to the first shape
+            self.shape_combo.bind('<<ComboboxSelected>>', self._update_material_params) # Bind to its own update method
+            
+            self.input_fields['Şekil'] = self.shape_combo # Store for later value retrieval
+
+            self._update_material_params() # Call to initially populate density and shape-specific fields
+
+        # --- Handling Other Calculation Types (Fetching parameters from EngineeringCalculator) ---
+        else: # Turning or Milling calculations
+            if self.shape_combo:
+                # Ensure shape_combo and its parent frame are hidden if not in material calculation
+                shape_frame_parent = self.shape_combo.master
+                if shape_frame_parent.winfo_ismapped():
+                    shape_frame_parent.pack_forget()
+
+            # Map GUI category name to internal key for EngineeringCalculator
+            category_to_internal_key = {
+                'Tornalama Hesaplamaları': 'turning',
+                'Frezeleme Hesaplamaları': 'milling'
+            }
+            calc_category_internal = category_to_internal_key.get(calc_category)
+
+            if calc_category_internal:
+                try:
+                    # `selected_calculation` is the Turkish name, also used as method_key
+                    param_info_list = ec.get_calculation_params(calc_category_internal, selected_calculation)
+                    
+                    for param_info in param_info_list:
+                        param_input_frame = ttk.Frame(self.params_container, style='Calc.TFrame')
+                        param_input_frame.pack(fill='x', pady=2, padx=5)
+                        
+                        # Use 'display_text_turkish' and 'unit' from param_info
+                        label_text = f"{param_info['display_text_turkish']} [{param_info['unit']}]:"
+                        ttk.Label(param_input_frame, text=label_text, style='Calc.TLabel').pack(side='left', padx=(0,5))
+                        
+                        entry = ttk.Entry(param_input_frame)
+                        entry.pack(side='left', fill='x', expand=True)
+                        # Store entry widget using the internal parameter name (e.g., 'Dm', 'Vc') as key
+                        self.input_fields[param_info['name']] = entry
+                except ValueError as e:
+                    # Handle cases where calc_method_key might be invalid for the category (e.g., empty category)
+                    # This might happen if a category has no calculations defined in EngineeringCalculator
+                    print(f"Error fetching params for {calc_category} - {selected_calculation}: {e}")
+                    # Optionally, display a message in the params_container
+                    ttk.Label(self.params_container, text="Bu hesaplama için parametre tanımlanmamış.", style='Calc.TLabel').pack()
+            else:
+                 # This category is not 'turning' or 'milling', so no parameters to show other than material/shape
+                pass
+
+
+    def _update_material_params(self, event: tk.Event = None):
+        """
+        Private helper to update material calculation parameters (density and shape-specific dimensions).
+        Called when a shape is selected in 'Kütle Hesabı'.
+        
+        Args:
+            event: The Tkinter event that triggered this method (e.g., `<<ComboboxSelected>>` from shape_combo). Default is None.
+        """
+        # Clear previous shape-specific and density fields, but not the 'Şekil' combobox itself.
+        # The shape_combo is stored in self.input_fields['Şekil'] and its parent is shape_frame.
+        # All other children of self.params_container need to be cleared.
+        for widget in self.params_container.winfo_children():
+            # Assuming shape_frame (parent of shape_combo) is the first child if it exists.
+            # This logic might be fragile. A more robust way is to tag frames or keep references.
+            if widget != self.input_fields.get('Şekil', None).master: # Don't destroy the shape_frame
+                widget.destroy()
+        
+        # Temporarily remove shape_combo from input_fields to repopulate others, then add it back.
+        # This is because we are iterating over self.input_fields later to collect values.
+        # Actually, input_fields is rebuilt here for material params.
+        current_shape_selection = self.input_fields['Şekil'].get() # Preserve current selection
+        self.input_fields = {'Şekil': self.input_fields['Şekil']} # Reset, but keep the shape combobox widget reference.
+        self.input_fields['Şekil'].set(current_shape_selection) # Restore selection
+        
+        # --- Density Input UI (Material selection and direct density entry) ---
+        density_frame = ttk.Frame(self.params_container, style='Calc.TFrame')
+        density_frame.pack(fill='x', pady=2, padx=5)
+        ttk.Label(density_frame, text="Yoğunluk [g/cm³]:", style='Calc.TLabel').pack(side='left', padx=(0,5)) # Turkish: "Density"
+        
+        density_entry = ttk.Entry(density_frame, width=10) # Smaller width for density
+        density_entry.pack(side='left', padx=(0,5))
+        self.input_fields['Yoğunluk'] = density_entry # Store by Turkish key "Yoğunluk"
+
+        material_names = list(ec.material_density.keys())
+        material_combo = ttk.Combobox(density_frame, values=material_names, state="readonly", width=20) # Wider combobox for materials
+        material_combo.pack(side='left', fill='x', expand=True)
+        AdvancedToolTip(material_combo, self.tooltips.get("MalzemeSec", "Bir malzeme seçerek yoğunluğu otomatik doldurun.")) # Turkish: "Select a material to auto-fill density."
+        
+        def _on_material_select(event=None): # Inner function for material selection
+            selected_material = material_combo.get()
+            if selected_material in ec.material_density:
+                density_entry.delete(0, tk.END)
+                density_entry.insert(0, str(ec.material_density[selected_material]))
+        material_combo.bind('<<ComboboxSelected>>', _on_material_select)
+        if material_names: # Set a default material if available
+            material_combo.set(material_names[0])
+            _on_material_select() # Trigger density update for default material
+
+        # --- Shape-Specific Dimension Parameters UI ---
+        selected_shape_turkish = self.shape_combo.get()
+        shape_key = self.reverse_shape_names.get(selected_shape_turkish) # Get internal key (e.g., "triangle")
+
+        if shape_key:
+            # Mapping from English internal parameter names (from EngineeringCalculator)
+            # to Turkish display names for labels.
+            param_to_turkish_map = {
+                'radius': 'Yarıçap', 'width': 'Genişlik', 'height': 'Yükseklik',
+                'length1': 'Uzunluk 1', 'height1': 'Yükseklik 1',
+                'length2': 'Uzunluk 2', 'height2': 'Yükseklik 2',
+                'diagonal1': 'Köşegen 1', 'diagonal2': 'Köşegen 2',
             }
 
-            self.reverse_shape_names = {v: k for k, v in self.shape_names.items()}
-            shape_values = list(self.shape_names.values())
+            shape_specific_params_english = ec.get_shape_parameters(shape_key) # e.g., ['width', 'height']
+            
+            gui_params_to_create = [] # List of (TurkishLabel, unit)
+            for p_name_english in shape_specific_params_english:
+                turkish_label = param_to_turkish_map.get(p_name_english, p_name_english.capitalize())
+                gui_params_to_create.append((turkish_label, 'mm'))
+            
+            gui_params_to_create.append(('Uzunluk', 'mm')) # Turkish: "Length", always add this common dimension
 
-            # Ana çerçeve
-            self.params_container = ttk.Frame(self.params_frame)
-            self.params_container.pack(fill='x', expand=True)
+            for param_label_turkish, unit_str in gui_params_to_create:
+                param_input_frame = ttk.Frame(self.params_container, style='Calc.TFrame')
+                param_input_frame.pack(fill='x', pady=2, padx=5)
+                
+                label_full_text = f"{param_label_turkish} [{unit_str}]:"
+                ttk.Label(param_input_frame, text=label_full_text, style='Calc.TLabel').pack(side='left', padx=(0,5))
+                
+                entry = ttk.Entry(param_input_frame)
+                entry.pack(side='left', fill='x', expand=True)
+                self.input_fields[param_label_turkish] = entry # Store by Turkish label, used in calculate_material_mass
 
-            # Şekil seçim alanı
-            shape_frame = ttk.Frame(self.params_container)
-            shape_frame.pack(fill='x', pady=2)
-            ttk.Label(shape_frame, text="Şekil").pack(side='left')
-            self.shape_combo = ttk.Combobox(shape_frame, values=shape_values)
-            self.shape_combo.pack(side='right')
-            self.shape_combo.set(shape_values[0])
+        self.params_container.update_idletasks() # Ensure layout is updated
 
-            def update_parameters(*args):
-                """
-                Updates the parameter input fields based on the selected shape.
 
-                Args:
-                    *args: Variable length argument list.
-                """
-                # Parametre alanlarını temizle
-                for widget in self.params_container.winfo_children():
-                    if widget != shape_frame:
-                        widget.destroy()
-
-                # input_fields'ı güncelle
-                self.input_fields = {}
-                self.input_fields['Şekil'] = self.shape_combo
-
-                # Yoğunluk alanı
-                density_frame = ttk.Frame(self.params_container)
-                density_frame.pack(fill='x', pady=2)
-                ttk.Label(density_frame, text="Malzeme/Yoğunluk [g/cm³]").pack(side='left')
-                density_entry = ttk.Entry(density_frame)
-                density_entry.pack(side='right')
-
-                # Malzeme listesi için Combobox
-                material_combo = ttk.Combobox(density_frame, values=list(ec.material_density.keys()))
-                material_combo.pack(side='right', padx=5)
-
-                def update_density(event=None):
-                    """
-                    Updates the density entry based on the selected material.
-
-                    Args:
-                        event: The event that triggered this method (default is None).
-                    """
-                    selected_material = material_combo.get()
-                    if selected_material in ec.material_density:
-                        density_entry.delete(0, tk.END)
-                        density_entry.insert(0, str(ec.material_density[selected_material]))
-
-                material_combo.bind('<<ComboboxSelected>>', update_density)
-                self.input_fields['Yoğunluk'] = density_entry
-
-                # Şekle özel parametreler
-                selected_shape = self.shape_combo.get()
-                shape_key = self.reverse_shape_names.get(selected_shape)
-
-                if shape_key in ['circle', 'semi-circle']:
-                    params = [('Yarıçap', 'mm'), ('Uzunluk', 'mm')]
-                else:
-                    params = [('Genişlik', 'mm'), ('Yükseklik', 'mm'), ('Uzunluk', 'mm')]
-
-                for param, unit in params:
-                    param_frame = ttk.Frame(self.params_container)
-                    param_frame.pack(fill='x', pady=2)
-                    ttk.Label(param_frame, text=f"{param} [{unit}]").pack(side='left')
-                    entry = ttk.Entry(param_frame)
-                    entry.pack(side='right')
-                    self.input_fields[param] = entry
-
-                # Widget'ları güncelle
-                self.params_container.update()
-
-            # Şekil değişikliğini izle
-            self.shape_combo.bind('<<ComboboxSelected>>', update_parameters)
-
-            # İlk parametreleri oluştur
-            update_parameters()
-
-        else:
-            calc_params = self.calc_types[calc_type][calculation]['params']
-            calc_units = self.calc_types[calc_type][calculation]['units']
-
-            if calc_type == 'Frezeleme Hesaplamaları' and calculation == 'Net Güç':
-                calc_params.extend(['fn', 'kc'])  # fn ve kc parametrelerini ekle
-                calc_units.extend(['mm/dev', 'N/mm²'])  # Birimleri ekle
-
-            for param, unit in zip(calc_params, calc_units):
-                frame = ttk.Frame(self.params_frame)
-                frame.pack(fill='x', pady=2)
-                ttk.Label(frame, text=f"{param} [{unit}]").pack(side='left')
-                entry = ttk.Entry(frame)
-                entry.pack(side='right')
-                self.input_fields[param] = entry
-
-    def update_result_display(self, result_data):
+    def update_result_display(self, result_data: dict):
         """
-        Updates the result display area with the calculation results.
+        Updates the scrolled text area with formatted calculation inputs and results.
 
         Args:
-            result_data: A dictionary containing the calculation results and parameters.
+            result_data (dict): A dictionary containing:
+                - 'calculation': Name of the calculation performed.
+                - 'parameters': Dictionary of input parameters used.
+                - 'result': The calculated result string.
         """
-        # Parametreleri daha detaylı göster
-        params = result_data['parameters']
-        param_text = "\n".join([f"- {k}: {v}" for k,v in params.items()])
+        # Clear previous results (optional, could append instead)
+        # self.result_text.delete(1.0, tk.END) 
+        
+        # Format parameters for display
+        params_str = "\n".join([f"  - {key.replace('_', ' ').capitalize()}: {value}" for key, value in result_data['parameters'].items()])
 
-        # Yeni hesaplama içeriği
-        new_content = f"""## Giriş Parametreleri
-    - Hesaplama Tipi: {self.calc_type.get()}
-    - Hesaplama: {result_data['calculation']}
+        # Construct the content in a Markdown-like format
+        content = f"\n\n## {result_data['calculation']} Sonuçları\n" # Turkish: " Results"
+        content += "------------------------------------\n"
+        content += "### Giriş Parametreleri:\n" # Turkish: "Input Parameters:"
+        content += f"{params_str}\n\n"
+        content += "### Hesaplama Sonucu:\n" # Turkish: "Calculation Result:"
+        content += f"```{result_data['result']}```\n"
+        content += "------------------------------------\n"
 
-    ## Kullanılan Değerler
-    {param_text}
-
-    ## Sonuç
-    ```plaintext
-    {result_data['result']}
-    ```
-    """
-
-        # İlk çalıştırmada başlığı ekle
-        if not self.result_text.get(1.0, tk.END).strip():
-            self.result_text.insert(1.0, "# Hesaplama Sonucu\n\n")
-
-        # Yeni veriyi ekle
-        self.result_text.insert(tk.END, new_content)
-
-        # En sonda notu ekle
-        if "## Not" not in self.result_text.get(1.0, tk.END):
-            self.result_text.insert(tk.END, "\n## Not\nHesaplanan değerler yaklaşık değerlerdir.\n")
+        # Append new result to the text area
+        self.result_text.insert(tk.END, content)
+        self.result_text.see(tk.END) # Scroll to the end to show the latest result
 
 
 if __name__ == "__main__":
