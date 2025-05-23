@@ -1,134 +1,153 @@
-# This part of the diff seems to be already applied or matches the current state.
-# No changes needed for this specific SEARCH block as it's identical to the REPLACE block
-# in the context of the file's current state shown in the previous read_files output.
-# I will skip generating a diff for this identical section.
-            'Cutting speed': { # Formula: Vc = (π * Dm * n) / 1000
-                'formula': lambda Dm, n: (Dm * pi * n) / 1000, # Dm (mm), n (rpm) -> Vc (m/min)
+import math
+from typing import Any, Dict, List, Union, Callable
+
+class EngineeringCalculator:
+    def __init__(self):
+        # Şekil hacim formülleri (mm cinsinden, hacim mm^3 döner)
+        self.shape_definitions: Dict[str, Callable[..., float]] = {
+            'triangle': lambda width, height, length: (width * height / 2) * length,
+            'circle': lambda radius, length: (math.pi * radius ** 2) * length,
+            'semi-circle': lambda radius, length: (math.pi * radius ** 2 / 2) * length,
+            'square': lambda width, length: (width ** 2) * length,
+            'rectangle': lambda width, height, length: (width * height) * length,
+            'parallelogram': lambda width, height, length: (width * height) * length,
+            'rhombus': lambda diagonal1, diagonal2, length: (diagonal1 * diagonal2 / 2) * length,
+            'trapezium': lambda height1, height2, length1, length2: ((length1 + length2) / 2 * height1) * height2,  # Not: Formül örnek, gerekirse düzelt
+            'kite': lambda diagonal1, diagonal2, length: (diagonal1 * diagonal2 / 2) * length,
+            'pentagon': lambda width, length: (5 / 4 * width ** 2 / math.tan(math.pi / 5)) * length,
+            'hexagon': lambda width, length: (3 * math.sqrt(3) / 2 * width ** 2) * length,
+            'octagon': lambda width, length: (2 * (1 + math.sqrt(2)) * width ** 2) * length,
+            'nonagon': lambda width, length: (9 / 4 * width ** 2 * (1 / math.tan(math.pi / 9))) * length,
+            'decagon': lambda width, length: (5 / 2 * width ** 2 * (1 / math.tan(math.pi / 10))) * length,
+        }
+        # Malzeme yoğunlukları (g/cm^3)
+        self.material_density: Dict[str, float] = {
+            'Çelik': 7.85,
+            'Alüminyum': 2.70,
+            'Bakır': 8.96,
+            'Pirinç': 8.50,
+            'Dökme Demir': 7.20,
+            'Plastik': 1.20,
+            'Titanyum': 4.51,
+            'Kurşun': 11.34,
+            'Çinko': 7.14,
+            'Nikel': 8.90,
+        }
+        # Tornalama ve frezeleme tanımları (mevcut koddan alınacak)
+        self.turning_definitions = {
+            'Cutting speed': {
+                'formula': lambda Dm, n: (Dm * math.pi * n) / 1000,
                 'units': {
                     'Dm': 'mm (machined diameter)',
                     'n': 'rpm (spindle speed)',
-                    'result': 'm/min' # Resulting cutting speed unit
+                    'result': 'm/min'
                 }
             },
-            'Spindle speed': { # Formula: n = (Vc * 1000) / (π * Dm)
-                'formula': lambda Vc, Dm: (Vc * 1000) / (pi * Dm), # Vc (m/min), Dm (mm) -> n (rpm)
+            'Spindle speed': {
+                'formula': lambda Vc, Dm: (Vc * 1000) / (math.pi * Dm),
                 'units': {
                     'Vc': 'm/min (cutting speed)',
                     'Dm': 'mm (machined diameter)',
-                    'result': 'rpm' # Resulting spindle speed unit
+                    'result': 'rpm'
                 }
             },
-            'Metal removal rate': { # Formula: Q = Vc * ap * fn
-                                   # Vc (m/min), ap (mm), fn (mm/rev) -> Q (cm³/min)
-                                   # This implies conversion: (Vc m/min * 1000 mm/m) * ap mm * fn mm/rev * (1 cm³/1000 mm³) = Vc * ap * fn cm³/min. The formula is correct under this interpretation.
+            'Metal removal rate': {
                 'formula': lambda Vc, ap, fn: (Vc * ap * fn),
                 'units': {
                     'Vc': 'm/min (cutting speed)',
-                    'ap': 'mm (cutting depth)', # depth of cut
+                    'ap': 'mm (cutting depth)',
                     'fn': 'mm/rev (feed per revolution)',
-                    'result': 'cm³/min' # Resulting metal removal rate unit
+                    'result': 'cm³/min'
                 }
             },
-            'Net power': { # Formula: Pc = (Vc * ap * fn * kc) / (60 * 10³)
-                           # Vc (m/min), ap (mm), fn (mm/rev), kc (N/mm²) -> Pc (kW)
-                           # Calculation: (Vc * 1000 mm/m * ap * fn * kc N/mm²) / (60 s/min * 1000 W/kW * 1000 N*mm/Joule_implicit) - this formula seems to be simplified.
-                           # Standard: Pc (kW) = (Fc * Vc_mps) / 1000 = (ap * fn_mps * kc * Vc_mps) / 1000
-                           # Given Vc_mpm, fn_mmpr: (ap * fn * kc * Vc_mpm) / (60 * 1000) is a common approximation if units align for kc.
+            'Net power': {
                 'formula': lambda Vc, ap, fn, kc: (Vc * ap * fn * kc) / (60 * 10**3),
                 'units': {
                     'Vc': 'm/min (cutting speed)',
                     'ap': 'mm (cutting depth)',
                     'fn': 'mm/rev (feed per revolution)',
                     'kc': 'N/mm² (specific cutting force)',
-                    'result': 'kW' # Resulting net power unit
+                    'result': 'kW'
                 }
             },
-            'Machining time': { # Formula: Tm = Lm / (fn * n)
-                'formula': lambda lm, fn, n: (lm / (fn * n)), # lm (mm), fn (mm/rev), n (rev/min) -> Tm (min)
+            'Machining time': {
+                'formula': lambda lm, fn, n: (lm / (fn * n)),
                 'units': {
                     'lm': 'mm (machined length)',
                     'fn': 'mm/rev (feed per revolution)',
                     'n': 'rpm (spindle speed)',
-                    'result': 'min' # Resulting machining time unit
+                    'result': 'min'
                 }
             }
         }
-
-        # Milling calculation definitions.
-        # Similar structure to turning_definitions.
-        self.milling_definitions: Dict[str, Dict[str, Any]] = {
-            'Table feed': { # Formula: Vf = fz * n * Zeff (Table Feed = feed per tooth * spindle speed * number of effective teeth)
-                'formula': lambda fz, n, ZEFF: (fz * n * ZEFF), # fz (mm/tooth), n (rpm), Zeff (count) -> Vf (mm/min)
+        self.milling_definitions = {
+            'Table feed': {
+                'formula': lambda fz, n, ZEFF: (fz * n * ZEFF),
                 'units': {
                     'fz': 'mm (feed per tooth)',
                     'n': 'rpm (spindle speed)',
                     'ZEFF': 'count (effective teeth)',
-                    'result': 'mm/min' # Resulting table feed unit
+                    'result': 'mm/min'
                 }
             },
-            'Cutting speed': { # Formula: Vc = (π * D * n) / 1000
-                'formula': lambda DCap, n: (pi * DCap * n) / 1000, # DCap (mm), n (rpm) -> Vc (m/min)
+            'Cutting speed': {
+                'formula': lambda DCap, n: (math.pi * DCap * n) / 1000,
                 'units': {
                     'DCap': 'mm (cutting diameter)',
                     'n': 'rpm (spindle speed)',
-                    'result': 'm/min' # Resulting cutting speed unit
+                    'result': 'm/min'
                 }
             },
-            'Spindle speed': { # Formula: n = (Vc * 1000) / (π * D)
-                'formula': lambda Vc, DCap: (Vc * 1000) / (pi * DCap), # Vc (m/min), DCap (mm) -> n (rpm)
+            'Spindle speed': {
+                'formula': lambda Vc, DCap: (Vc * 1000) / (math.pi * DCap),
                 'units': {
                     'Vc': 'm/min (cutting speed)',
                     'DCap': 'mm (cutting diameter)',
-                    'result': 'rpm' # Resulting spindle speed unit
+                    'result': 'rpm'
                 }
             },
-            'Feed per tooth': { # Formula: fz = Vf / (n * Zeff)
-                'formula': lambda Vf, n, ZEFF: (Vf / (n * ZEFF)), # Vf (mm/min), n (rpm), Zeff (count) -> fz (mm/tooth)
+            'Feed per tooth': {
+                'formula': lambda Vf, n, ZEFF: (Vf / (n * ZEFF)),
                 'units': {
                     'Vf': 'mm/min (table feed)',
                     'n': 'rpm (spindle speed)',
                     'ZEFF': 'count (effective teeth)',
-                    'result': 'mm' # Resulting feed per tooth unit
+                    'result': 'mm'
                 }
             },
-            'Feed per revolution': { # Formula: fn = Vf / n (Feed per revolution = table feed / spindle speed)
-                'formula': lambda Vf, n: (Vf / n), # Vf (mm/min), n (rpm) -> fn (mm/rev)
+            'Feed per revolution': {
+                'formula': lambda Vf, n: (Vf / n),
                 'units': {
                     'Vf': 'mm/min (table feed)',
                     'n': 'rpm (spindle speed)',
-                    'result': 'mm/rev' # Resulting feed per revolution unit
+                    'result': 'mm/rev'
                 }
             },
-            'Metal removal rate': { # Formula: Q = (ap * ae * Vf) / 1000 (Metal Removal Rate)
-                'formula': lambda Vf, ap, ae: ((ap * ae * Vf) / 1000), # ap (mm), ae (mm), Vf (mm/min) -> Q (cm³/min)
-                                                                       # (mm * mm * mm/min) / 1000 = mm³/min / 1000 = cm³/min. This is correct.
+            'Metal removal rate': {
+                'formula': lambda Vf, ap, ae: ((ap * ae * Vf) / 1000),
                 'units': {
                     'Vf': 'mm/min (table feed)',
                     'ap': 'mm (axial depth of cut)',
                     'ae': 'mm (radial depth of cut)',
-                    'result': 'cm³/min' # Resulting metal removal rate unit
+                    'result': 'cm³/min'
                 }
             },
-            'Net power': { # Formula: Pc = (ae * ap * Vf * kc) / (60 * 10^6)
-                           # ae (mm), ap (mm), Vf (mm/min), kc (N/mm²) -> Pc (kW)
-                           # Q (cm³/min) = (ae * ap * Vf) / 1000. Pc (kW) = (Q_mm3_sec * kc) / 10^6
-                           # ( (ae*ap*Vf_mm_min) / (60*1000) mm³/s * kc N/mm² ) / 1000 W/kW = kW. This is correct.
+            'Net power': {
                 'formula': lambda ae, ap, Vf, kc: (ae * ap * Vf * kc) / (60 * 10**6),
                 'units': {
                     'ae': 'mm (radial depth of cut)',
                     'ap': 'mm (axial depth of cut)',
                     'Vf': 'mm/min (table feed)',
                     'kc': 'N/mm² (specific cutting force)',
-                    'result': 'kW' # Resulting net power unit
+                    'result': 'kW'
                 }
             },
-            'Torque': { # Formula: M = (Pc * 30000) / (π * n)
-                'formula': lambda Pc, n: (Pc * 30 * 10**3) / (pi * n), # Pc (kW), n (rpm) -> M (Nm)
-                                                                       # Pc (kW) = T (Nm) * n (rpm) * 2π / (60 * 1000). So T = Pc * 60000 / (2πn) = Pc * 30000 / (πn). Correct.
+            'Torque': {
+                'formula': lambda Pc, n: (Pc * 30 * 10**3) / (math.pi * n),
                 'units': {
                     'Pc': 'kW (net power)',
                     'n': 'rpm (spindle speed)',
-                    'result': 'Nm' # Resulting torque unit
+                    'result': 'Nm'
                 }
             }
         }

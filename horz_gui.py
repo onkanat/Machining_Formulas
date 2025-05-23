@@ -559,180 +559,129 @@ class AdvancedCalculator:
             self.result_text.insert(tk.END, "\n--- Execute Modu Devre Dışı ---\n") # Turkish: Execute Mode Deactivated
 
 
-    def update_input_fields(self, event: tk.Event = None):
+    def update_input_fields(self, event: 'tk.Event' = None):
         """
-        Dynamically updates the input fields in the GUI based on the selected calculation type and specific calculation.
-
-        This method is crucial for adapting the UI to different calculations, especially for material mass
-        calculations where shapes require different dimension parameters.
-
-        Args:
-            event: The Tkinter event that triggered this method (e.g., `<<ComboboxSelected>>`). Default is None.
+        Dinamik olarak GUI'deki parametre alanlarını günceller. Her hesaplama türü ve seçimi için gerekli alanlar gösterilir.
         """
-        # Clear any existing widgets in the params_container frame.
+        # Tüm mevcut widget'ları temizle
         for widget in self.params_container.winfo_children():
             widget.destroy()
-        
-        self.input_fields = {} # Reset the dictionary holding input field widgets.
+        self.input_fields = {}
+        self.shape_combo = None
 
         calc_category = self.calc_type.get()
         selected_calculation = self.calculation.get()
-
-        if not calc_category or not selected_calculation: # If no calculation is selected (e.g. at startup or after clearing)
+        if not calc_category or not selected_calculation:
             return
 
-        # --- Handling Material Mass Calculation (Dynamic fields based on shape) ---
-        if calc_category == 'Malzeme Hesaplamaları' and selected_calculation == 'Kütle Hesabı': # Turkish: "Material Calculations", "Mass Calculation"
-            available_shapes_map = ec.get_available_shapes() # Get {key: TurkishName} map from calculator
-            self.reverse_shape_names = {v: k for k, v in available_shapes_map.items()} # For lookup: TurkishName -> key
+        if calc_category == 'Malzeme Hesaplamaları' and selected_calculation == 'Kütle Hesabı':
+            available_shapes_map = ec.get_available_shapes()
+            self.reverse_shape_names = {v: k for k, v in available_shapes_map.items()}
             shape_display_names = list(available_shapes_map.values())
 
-            # --- Shape Selection UI ---
             shape_frame = ttk.Frame(self.params_container, style='Calc.TFrame')
             shape_frame.pack(fill='x', pady=2, padx=5)
-            ttk.Label(shape_frame, text="Şekil:", style='Calc.TLabel').pack(side='left', padx=(0,5)) # Turkish: "Shape:"
-            
-            if not self.shape_combo: # Create combobox if it doesn't exist
-                 self.shape_combo = ttk.Combobox(shape_frame, values=shape_display_names, state="readonly")
-            else: # Update values if it exists
-                 self.shape_combo['values'] = shape_display_names
-            
+            ttk.Label(shape_frame, text="Şekil:", style='Calc.TLabel').pack(side='left', padx=(0,5))
+            self.shape_combo = ttk.Combobox(shape_frame, values=shape_display_names, state="readonly")
             self.shape_combo.pack(side='left', fill='x', expand=True)
             if shape_display_names:
-                self.shape_combo.set(shape_display_names[0]) # Default to the first shape
-            self.shape_combo.bind('<<ComboboxSelected>>', self._update_material_params) # Bind to its own update method
-            
-            self.input_fields['Şekil'] = self.shape_combo # Store for later value retrieval
-
-            self._update_material_params() # Call to initially populate density and shape-specific fields
-
-        # --- Handling Other Calculation Types (Fetching parameters from EngineeringCalculator) ---
-        else: # Turning or Milling calculations
-            if self.shape_combo:
-                # Ensure shape_combo and its parent frame are hidden if not in material calculation
-                shape_frame_parent = self.shape_combo.master
-                if shape_frame_parent.winfo_ismapped():
-                    shape_frame_parent.pack_forget()
-
-            # Map GUI category name to internal key for EngineeringCalculator
+                self.shape_combo.set(shape_display_names[0])
+            self.shape_combo.bind('<<ComboboxSelected>>', self._update_material_params)
+            self.input_fields['Şekil'] = self.shape_combo
+            # Tooltip for shape selection
+            AdvancedToolTip(self.shape_combo, self.tooltips.get("Şekil", "Şekil seçin."))
+            self._update_material_params()
+        else:
             category_to_internal_key = {
                 'Tornalama Hesaplamaları': 'turning',
                 'Frezeleme Hesaplamaları': 'milling'
             }
             calc_category_internal = category_to_internal_key.get(calc_category)
-
             if calc_category_internal:
                 try:
-                    # `selected_calculation` is the Turkish name, also used as method_key
                     param_info_list = ec.get_calculation_params(calc_category_internal, selected_calculation)
-                    
                     for param_info in param_info_list:
                         param_input_frame = ttk.Frame(self.params_container, style='Calc.TFrame')
                         param_input_frame.pack(fill='x', pady=2, padx=5)
-                        
-                        # Use 'display_text_turkish' and 'unit' from param_info
                         label_text = f"{param_info['display_text_turkish']} [{param_info['unit']}]:"
-                        ttk.Label(param_input_frame, text=label_text, style='Calc.TLabel').pack(side='left', padx=(0,5))
-                        
+                        label_widget = ttk.Label(param_input_frame, text=label_text, style='Calc.TLabel')
+                        label_widget.pack(side='left', padx=(0,5))
                         entry = ttk.Entry(param_input_frame)
                         entry.pack(side='left', fill='x', expand=True)
-                        # Store entry widget using the internal parameter name (e.g., 'Dm', 'Vc') as key
                         self.input_fields[param_info['name']] = entry
+                        # Tooltip for each parameter
+                        tooltip_key = param_info['name']
+                        tooltip_text = self.tooltips.get(tooltip_key, self.tooltips.get(param_info['display_text_turkish'], f"{param_info['display_text_turkish']} girin."))
+                        AdvancedToolTip(entry, tooltip_text)
                 except ValueError as e:
-                    # Handle cases where calc_method_key might be invalid for the category (e.g., empty category)
-                    # This might happen if a category has no calculations defined in EngineeringCalculator
-                    print(f"Error fetching params for {calc_category} - {selected_calculation}: {e}")
-                    # Optionally, display a message in the params_container
                     ttk.Label(self.params_container, text="Bu hesaplama için parametre tanımlanmamış.", style='Calc.TLabel').pack()
-            else:
-                 # This category is not 'turning' or 'milling', so no parameters to show other than material/shape
-                pass
 
-
-    def _update_material_params(self, event: tk.Event = None):
+    def _update_material_params(self, event=None):
         """
-        Private helper to update material calculation parameters (density and shape-specific dimensions).
-        Called when a shape is selected in 'Kütle Hesabı'.
-        
-        Args:
-            event: The Tkinter event that triggered this method (e.g., `<<ComboboxSelected>>` from shape_combo). Default is None.
+        Kütle hesabı için şekil seçildiğinde yoğunluk ve şekil parametrelerini günceller.
         """
-        # Clear previous shape-specific and density fields, but not the 'Şekil' combobox itself.
-        # The shape_combo is stored in self.input_fields['Şekil'] and its parent is shape_frame.
-        # All other children of self.params_container need to be cleared.
-        for widget in self.params_container.winfo_children():
-            # Assuming shape_frame (parent of shape_combo) is the first child if it exists.
-            # This logic might be fragile. A more robust way is to tag frames or keep references.
-            if widget != self.input_fields.get('Şekil', None).master: # Don't destroy the shape_frame
+        # Şekil combobox'u hariç tüm widget'ları temizle
+        widgets = list(self.params_container.winfo_children())
+        if len(widgets) > 1:
+            for widget in widgets[1:]:
                 widget.destroy()
-        
-        # Temporarily remove shape_combo from input_fields to repopulate others, then add it back.
-        # This is because we are iterating over self.input_fields later to collect values.
-        # Actually, input_fields is rebuilt here for material params.
-        current_shape_selection = self.input_fields['Şekil'].get() # Preserve current selection
-        self.input_fields = {'Şekil': self.input_fields['Şekil']} # Reset, but keep the shape combobox widget reference.
-        self.input_fields['Şekil'].set(current_shape_selection) # Restore selection
-        
-        # --- Density Input UI (Material selection and direct density entry) ---
+        if 'Şekil' not in self.input_fields or self.input_fields['Şekil'] is None:
+            return
+        current_shape_selection = self.input_fields['Şekil'].get()
+        self.input_fields = {'Şekil': self.input_fields['Şekil']}
+        self.input_fields['Şekil'].set(current_shape_selection)
+
         density_frame = ttk.Frame(self.params_container, style='Calc.TFrame')
         density_frame.pack(fill='x', pady=2, padx=5)
-        ttk.Label(density_frame, text="Yoğunluk [g/cm³]:", style='Calc.TLabel').pack(side='left', padx=(0,5)) # Turkish: "Density"
-        
-        density_entry = ttk.Entry(density_frame, width=10) # Smaller width for density
-        density_entry.pack(side='left', padx=(0,5))
-        self.input_fields['Yoğunluk'] = density_entry # Store by Turkish key "Yoğunluk"
+        ttk.Label(density_frame, text="Yoğunluk [g/cm³]:", style='Calc.TLabel').pack(side='left', padx=(0,5))
+        density_entry = ttk.Entry(density_frame, width=10)
+        density_entry.pack(side='left', fill='x', expand=True)
+        self.input_fields['Yoğunluk'] = density_entry
+        # Tooltip for density
+        AdvancedToolTip(density_entry, self.tooltips.get("Yoğunluk", "Malzemenin yoğunluğunu girin."))
 
         material_names = list(ec.material_density.keys())
-        material_combo = ttk.Combobox(density_frame, values=material_names, state="readonly", width=20) # Wider combobox for materials
-        material_combo.pack(side='left', fill='x', expand=True)
-        AdvancedToolTip(material_combo, self.tooltips.get("MalzemeSec", "Bir malzeme seçerek yoğunluğu otomatik doldurun.")) # Turkish: "Select a material to auto-fill density."
-        
-        def _on_material_select(event=None): # Inner function for material selection
-            selected_material = material_combo.get()
-            if selected_material in ec.material_density:
-                density_entry.delete(0, tk.END)
-                density_entry.insert(0, str(ec.material_density[selected_material]))
+        material_combo = ttk.Combobox(density_frame, values=material_names, state="readonly", width=15)
+        material_combo.pack(side='left', padx=(10,0))
+        def _on_material_select(event=None):
+            mat = material_combo.get()
+            if mat in ec.material_density:
+                density_entry.delete(0, 'end')
+                density_entry.insert(0, str(ec.material_density[mat]))
         material_combo.bind('<<ComboboxSelected>>', _on_material_select)
-        if material_names: # Set a default material if available
+        if material_names:
             material_combo.set(material_names[0])
-            _on_material_select() # Trigger density update for default material
+            _on_material_select()
+        # Tooltip for material selection
+        AdvancedToolTip(material_combo, self.tooltips.get("MalzemeSec", "Bir malzeme seçerek yoğunluğu otomatik doldurun."))
 
-        # --- Shape-Specific Dimension Parameters UI ---
-        selected_shape_turkish = self.shape_combo.get()
-        shape_key = self.reverse_shape_names.get(selected_shape_turkish) # Get internal key (e.g., "triangle")
-
+        selected_shape_turkish = self.shape_combo.get() if self.shape_combo else None
+        shape_key = self.reverse_shape_names.get(selected_shape_turkish) if selected_shape_turkish else None
         if shape_key:
-            # Mapping from English internal parameter names (from EngineeringCalculator)
-            # to Turkish display names for labels.
             param_to_turkish_map = {
                 'radius': 'Yarıçap', 'width': 'Genişlik', 'height': 'Yükseklik',
                 'length1': 'Uzunluk 1', 'height1': 'Yükseklik 1',
                 'length2': 'Uzunluk 2', 'height2': 'Yükseklik 2',
                 'diagonal1': 'Köşegen 1', 'diagonal2': 'Köşegen 2',
             }
-
-            shape_specific_params_english = ec.get_shape_parameters(shape_key) # e.g., ['width', 'height']
-            
-            gui_params_to_create = [] # List of (TurkishLabel, unit)
+            shape_specific_params_english = ec.get_shape_parameters(shape_key)
+            gui_params_to_create = []
             for p_name_english in shape_specific_params_english:
                 turkish_label = param_to_turkish_map.get(p_name_english, p_name_english.capitalize())
-                gui_params_to_create.append((turkish_label, 'mm'))
-            
-            gui_params_to_create.append(('Uzunluk', 'mm')) # Turkish: "Length", always add this common dimension
-
-            for param_label_turkish, unit_str in gui_params_to_create:
+                gui_params_to_create.append((turkish_label, 'mm', p_name_english))
+            gui_params_to_create.append(('Uzunluk', 'mm', 'Uzunluk'))
+            for param_label_turkish, unit_str, tooltip_key in gui_params_to_create:
                 param_input_frame = ttk.Frame(self.params_container, style='Calc.TFrame')
                 param_input_frame.pack(fill='x', pady=2, padx=5)
-                
                 label_full_text = f"{param_label_turkish} [{unit_str}]:"
                 ttk.Label(param_input_frame, text=label_full_text, style='Calc.TLabel').pack(side='left', padx=(0,5))
-                
                 entry = ttk.Entry(param_input_frame)
                 entry.pack(side='left', fill='x', expand=True)
-                self.input_fields[param_label_turkish] = entry # Store by Turkish label, used in calculate_material_mass
-
-        self.params_container.update_idletasks() # Ensure layout is updated
-
+                self.input_fields[param_label_turkish] = entry
+                # Tooltip for each shape parameter
+                tooltip_text = self.tooltips.get(tooltip_key, self.tooltips.get(param_label_turkish, f"{param_label_turkish} girin."))
+                AdvancedToolTip(entry, tooltip_text)
+        self.params_container.update_idletasks()
 
     def update_result_display(self, result_data: dict):
         """
