@@ -257,9 +257,44 @@ class AdvancedCalculator:
         # --- Calculate Button ---
         self.calculate_button = ttk.Button(self.left_frame, text="HESAPLA",
                                            command=self.calculate, style='Calc.TButton') # Turkish: "CALCULATE"
-        self.calculate_button.pack(pady=20, fill='x', ipady=5) # Made more prominent
+        self.calculate_button.pack(pady=10, fill='x', ipady=5) # Adjusted padding
         AdvancedToolTip(self.calculate_button, self.tooltips.get("HesaplaButonu", "Seçili hesaplamayı gerçekleştir.")) # Turkish: "Perform the selected calculation."
 
+        # --- Separator ---
+        ttk.Separator(self.left_frame, orient='horizontal').pack(fill='x', pady=10)
+
+        # --- LLM Interaction UI Elements ---
+        llm_frame = ttk.Frame(self.left_frame, style='Calc.TFrame')
+        llm_frame.pack(fill='x', pady=5)
+
+        # Model URL
+        ttk.Label(llm_frame, text="Model URL:", style='Calc.TLabel').pack(pady=(5,0), anchor='w')
+        self.model_url_entry = ttk.Entry(llm_frame)
+        self.model_url_entry.pack(fill='x', pady=(0,5))
+        self.model_url_entry.insert(0, "http://127.0.0.1:11434") # Default URL, user provided 192.168.1.14, but localhost is safer default
+        AdvancedToolTip(self.model_url_entry, self.tooltips.get("ModelURL", "Kullanılacak Ollama modelinin URL'si."))
+
+        # Model Selection
+        ttk.Label(llm_frame, text="Model Seçin:", style='Calc.TLabel').pack(pady=(5,0), anchor='w')
+        self.model_selection_combo = ttk.Combobox(llm_frame, state="readonly")
+        self.model_selection_combo.pack(fill='x', pady=(0,5))
+        # Model list will be populated from user's provided JSON
+        model_names = ["devstral:24b", "qwen3:32b", "gemma3:27b", "gemma3:latest"] # Placeholder, will be dynamic if possible
+        self.model_selection_combo['values'] = model_names
+        if model_names:
+            self.model_selection_combo.set(model_names[0])
+        AdvancedToolTip(self.model_selection_combo, self.tooltips.get("ModelSecimi", "Kullanılacak LLM modelini seçin."))
+
+        # Chat Prompt Input
+        ttk.Label(llm_frame, text="Soru / Prompt:", style='Calc.TLabel').pack(pady=(5,0), anchor='w')
+        self.chat_prompt_text = scrolledtext.ScrolledText(llm_frame, wrap=tk.WORD, height=5, font=('Arial', 10))
+        self.chat_prompt_text.pack(fill='x', pady=(0,5))
+        AdvancedToolTip(self.chat_prompt_text, self.tooltips.get("ChatPrompt", "Modele göndermek istediğiniz soru veya komut."))
+
+        # Send Prompt Button
+        self.send_prompt_button = ttk.Button(llm_frame, text="Gönder", command=self.send_prompt_to_model, style='Calc.TButton')
+        self.send_prompt_button.pack(pady=10, fill='x', ipady=5)
+        AdvancedToolTip(self.send_prompt_button, self.tooltips.get("GonderButonu", "Soruyu modele gönder."))
 
         # --- Initialize dynamic fields ---
         self.input_fields = {}
@@ -271,6 +306,339 @@ class AdvancedCalculator:
         if list(self.calc_types.keys()):
             self.calc_type.set(list(self.calc_types.keys())[0])
             self.update_calculations()
+
+        # Initialize model list for the combobox
+        self.ollama_models = ["devstral:24b", "qwen3:32b", "gemma3:27b", "gemma3:latest"]
+        self.model_selection_combo['values'] = self.ollama_models
+        if self.ollama_models:
+            self.model_selection_combo.set(self.ollama_models[0])
+
+        # Set default model URL
+        self.model_url_entry.delete(0, tk.END)
+        self.model_url_entry.insert(0, "http://127.0.0.1:11434/api/chat") # More specific default for Ollama chat
+
+    def send_prompt_to_model(self):
+        """
+        Handles sending the prompt from chat_prompt_text to the selected LLM.
+        For now, it just displays the intended action and user prompt in the result_text.
+        Actual model communication will be implemented in backend logic.
+        """
+        model_url = self.model_url_entry.get()
+        selected_model = self.model_selection_combo.get()
+        user_prompt = self.chat_prompt_text.get("1.0", tk.END).strip()
+
+        if not model_url or not selected_model or not user_prompt:
+            messagebox.showwarning("Eksik Bilgi", "Lütfen Model URL, Model ve Prompt girdiğinizden emin olun.")
+            return
+
+        # Add user's prompt to the shared workspace (result_text)
+        self.add_to_workspace("Kullanıcı", user_prompt)
+
+        # Placeholder for backend call
+        # self.backend_send_to_ollama(model_url, selected_model, user_prompt, self.get_conversation_history())
+
+        # Simulate model thinking and responding (replace with actual backend call later)
+        # self.add_to_workspace("Sistem", f"'{selected_model}' modeline '{user_prompt[:50]}...' prompt'u gönderiliyor (URL: {model_url})...")
+
+        # Actual backend call
+        self.call_ollama_api(model_url, selected_model, user_prompt)
+
+        self.chat_prompt_text.delete("1.0", tk.END) # Clear the prompt input area
+
+    def get_conversation_history(self) -> list[dict]:
+        """
+        Retrieves the content of the result_text area and attempts to parse it into
+        Ollama's expected messages format.
+        """
+        full_history_text = self.result_text.get("1.0", tk.END).strip()
+        messages = []
+        # Simple parsing based on prefixes. More robust parsing might be needed.
+        # This assumes "Kullanıcı:", "Model:", "Sistem:" prefixes.
+        # Tool calls and results need special handling if they are to be part of history explicitly.
+        # For now, we'll primarily focus on user and assistant (model) messages for context.
+
+        # Split by double newlines which separate our entries
+        entries = re.split(r'\n\n', full_history_text)
+        for entry in entries:
+            entry = entry.strip()
+            if entry.startswith("Kullanıcı:"):
+                messages.append({"role": "user", "content": entry.replace("Kullanıcı:", "", 1).strip()})
+            elif entry.startswith("Model:"):
+                # Check if this is a tool call response from the model
+                if "Tool Call:" in entry: # Assuming we format tool calls like this
+                    # We might need to parse the tool call to include it correctly if Ollama expects that
+                    # For now, let's treat it as a generic assistant message or decide how to format it
+                    # Based on Ollama's tool use documentation, assistant can reply with tool_calls
+                    # This part will be refined when handling tool call responses.
+                    # For now, we just add the text content.
+                    messages.append({"role": "assistant", "content": entry.replace("Model:", "", 1).strip()})
+                else:
+                    messages.append({"role": "assistant", "content": entry.replace("Model:", "", 1).strip()})
+            # Ignoring "Sistem:", "Giriş Parametreleri:", "Hesaplama Sonucu:" for Ollama context for now,
+            # unless they are specifically part of what the model should see as 'assistant' or 'user' dialogue.
+            # Tool results will be added with role 'tool'.
+
+        # Ensure the last message is from the user if the current prompt is from the user.
+        # The user_prompt is added separately in call_ollama_api.
+        # This history should represent what came *before* the current user_prompt.
+        return messages
+
+    def _get_calculator_tools_definition(self) -> list[dict]:
+        """
+        Generates the tool definitions for EngineeringCalculator methods
+        in the format expected by Ollama.
+        """
+        tools = []
+        # Turning calculations
+        for calc_name in ec.turning_definitions.keys():
+            params_info = ec.get_calculation_params('turning', calc_name)
+            properties = {
+                param['name']: {"type": "number", "description": f"{param['display_text_turkish']} ({param['unit']})"}
+                for param in params_info
+            }
+            required = [param['name'] for param in params_info]
+
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": f"calculate_turning_{calc_name.replace(' ', '_').lower()}", #e.g. calculate_turning_cutting_speed
+                    "description": f"Tornalama için '{calc_name}' hesaplaması yapar. Örn: {calc_name}",
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required
+                    }
+                }
+            })
+
+        # Milling calculations
+        for calc_name in ec.milling_definitions.keys():
+            params_info = ec.get_calculation_params('milling', calc_name)
+            properties = {
+                param['name']: {"type": "number", "description": f"{param['display_text_turkish']} ({param['unit']})"}
+                for param in params_info
+            }
+            required = [param['name'] for param in params_info]
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": f"calculate_milling_{calc_name.replace(' ', '_').lower()}",
+                    "description": f"Frezeleme için '{calc_name}' hesaplaması yapar. Örn: {calc_name}",
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required
+                    }
+                }
+            })
+
+        # Material mass calculation (a bit more complex due to shapes)
+        # For simplicity, we'll define a generic material mass tool.
+        # Model will need to specify shape and its dimensions.
+        # This requires careful prompting or the model knowing shape parameter names.
+        # Let's define it with common params and expect the model to learn/be prompted for shape specific ones.
+        # A better approach might be separate tools for each shape, or a more structured input.
+        # For now, one tool for mass calculation.
+
+        # General parameters for mass calculation (density, length are common)
+        mass_params = {
+            "shape_key": {"type": "string", "description": "Malzemenin şekli (örn: 'triangle', 'circle', 'square')."},
+            "density": {"type": "number", "description": "Malzeme yoğunluğu (g/cm³)."},
+            "length": {"type": "number", "description": "Ekstrüzyon uzunluğu (mm)."}
+            # Shape specific params like 'radius', 'width', 'height' need to be dynamically asked or known by model.
+            # Ollama's tool definition doesn't easily support "anyOf" for parameters based on another param (shape_key).
+            # We'll make them optional here and handle in the execution logic.
+        }
+        # Add shape parameters dynamically to the description or as optional params
+        # This is a simplification. A robust solution would require more complex tool definition or interaction.
+        # For now, we'll rely on the model to provide necessary args based on the shape_key.
+        # The function call will need to parse these.
+
+        # We can list all possible shape parameters as optional to guide the model.
+        all_shape_params = set()
+        for shape_k in ec.get_available_shapes().keys():
+            for p_name in ec.get_shape_parameters(shape_k):
+                all_shape_params.add(p_name)
+
+        for p_name in sorted(list(all_shape_params)):
+             mass_params[p_name] = {"type": "number", "description": f"Şekle özel parametre: {p_name} (mm), eğer şekil için gerekliyse."}
+
+
+        tools.append({
+            "type": "function",
+            "function": {
+                "name": "calculate_material_mass",
+                "description": "Belirli bir şekil ve yoğunluk için malzeme kütlesini hesaplar. 'shape_key' ve gerekli boyutları belirtin.",
+                "parameters": {
+                    "type": "object",
+                    "properties": mass_params,
+                    "required": ["shape_key", "density", "length"] # Core requirements
+                }
+            }
+        })
+        return tools
+
+    def call_ollama_api(self, model_url: str, model_name: str, user_prompt: str):
+        """
+        Calls the Ollama API with the given prompt, model, and conversation history.
+        Handles tool calls if the model requests them.
+        """
+        headers = {"Content-Type": "application/json"}
+
+        conversation_history = self.get_conversation_history() # Gets previous messages
+        current_messages = conversation_history + [{"role": "user", "content": user_prompt}]
+
+        tools = self._get_calculator_tools_definition()
+
+        payload = {
+            "model": model_name,
+            "messages": current_messages,
+            "stream": False, # Important for tool use, stream=True might behave differently
+            "tools": tools
+        }
+
+        self.add_to_workspace("Sistem", f"'{model_name}' modeline gönderiliyor...\nPrompt: {user_prompt}\nTools: {[t['function']['name'] for t in tools]}")
+
+        try:
+            import requests # Assuming requests is available
+            response = requests.post(model_url, json=payload, headers=headers)
+            response.raise_for_status()  # Raise an exception for HTTP errors
+            response_data = response.json()
+
+            self.add_to_workspace("Model Ham Cevap", json.dumps(response_data, indent=2, ensure_ascii=False)) # Log raw response
+
+            assistant_message = response_data.get("message", {})
+
+            if assistant_message.get("tool_calls"):
+                self.add_to_workspace("Model", "Bir araç kullanmak istiyor...")
+                self.handle_tool_calls(model_url, model_name, current_messages, assistant_message["tool_calls"], tools)
+            else:
+                content = assistant_message.get("content", "Modelden içerik alınamadı.")
+                self.add_to_workspace("Model", content)
+
+        except requests.exceptions.RequestException as e:
+            error_msg = f"API isteği başarısız: {e}"
+            self.add_to_workspace("Sistem Hatası", error_msg)
+            messagebox.showerror("API Hatası", error_msg)
+        except json.JSONDecodeError:
+            error_msg = "API'den gelen cevap JSON formatında değil."
+            self.add_to_workspace("Sistem Hatası", error_msg)
+            messagebox.showerror("API Cevap Hatası", error_msg)
+        except Exception as e:
+            error_msg = f"Beklenmedik bir hata oluştu: {e}"
+            self.add_to_workspace("Sistem Hatası", error_msg)
+            messagebox.showerror("Genel Hata", error_msg)
+
+    def handle_tool_calls(self, model_url: str, model_name: str, messages_history: list, tool_calls: list, tools_definition: list):
+        """
+        Executes tool calls requested by the model and sends results back to Ollama.
+        """
+        # Add the assistant's message with tool_calls to history for the next API call
+        messages_for_next_turn = messages_history + [{"role": "assistant", "content": None, "tool_calls": tool_calls}]
+
+        tool_results = []
+
+        for tool_call in tool_calls:
+            function_name_from_model = tool_call["function"]["name"]
+            arguments = json.loads(tool_call["function"]["arguments"]) # Arguments are a JSON string
+            tool_call_id = tool_call["id"] # Ollama provides an ID for each tool call
+
+            self.add_to_workspace("Sistem", f"Tool Çağrısı: {function_name_from_model} ID: {tool_call_id} Argümanlar: {arguments}")
+
+            result_content = ""
+            try:
+                if function_name_from_model.startswith("calculate_turning_"):
+                    actual_calc_name = function_name_from_model.replace("calculate_turning_", "").replace("_", " ").title()
+                    # Ensure args are passed in the order expected by ec.calculate_turning
+                    # The order is defined by ec.get_calculation_params
+                    params_info = ec.get_calculation_params('turning', actual_calc_name)
+                    ordered_args = [arguments[p['name']] for p in params_info]
+                    calc_result = ec.calculate_turning(actual_calc_name, *ordered_args)
+                    result_content = f"{calc_result['value']:.2f} {calc_result['units']}"
+
+                elif function_name_from_model.startswith("calculate_milling_"):
+                    actual_calc_name = function_name_from_model.replace("calculate_milling_", "").replace("_", " ").title()
+                    params_info = ec.get_calculation_params('milling', actual_calc_name)
+                    ordered_args = [arguments[p['name']] for p in params_info]
+                    calc_result = ec.calculate_milling(actual_calc_name, *ordered_args)
+                    result_content = f"{calc_result['value']:.2f} {calc_result['units']}"
+
+                elif function_name_from_model == "calculate_material_mass":
+                    shape_key = arguments.pop("shape_key")
+                    density = arguments.pop("density")
+                    length = arguments.pop("length") # Extrusion length
+
+                    # Other arguments are shape-specific dimensions. Order them as per ec.get_shape_parameters
+                    shape_dim_names = ec.get_shape_parameters(shape_key) # e.g., ['width', 'height']
+                    shape_dims_values = [arguments[dim_name] for dim_name in shape_dim_names]
+
+                    all_args_for_mass = shape_dims_values + [length] # length is the last arg for volume calc
+
+                    mass_val = ec.calculate_material_mass(shape_key, density, *all_args_for_mass)
+                    result_content = f"{mass_val:.2f} gram"
+
+                else:
+                    result_content = f"Bilinmeyen fonksiyon: {function_name_from_model}"
+
+                self.add_to_workspace("Tool Sonucu", f"Fonksiyon: {function_name_from_model}, Sonuç: {result_content}")
+                tool_results.append({
+                    "tool_call_id": tool_call_id,
+                    "role": "tool",
+                    "content": result_content
+                })
+
+            except Exception as e:
+                error_str = f"Tool çalıştırma hatası ({function_name_from_model}): {e}"
+                self.add_to_workspace("Sistem Hatası", error_str)
+                tool_results.append({
+                    "tool_call_id": tool_call_id,
+                    "role": "tool",
+                    "content": error_str
+                })
+
+        # Send the tool results back to Ollama
+        messages_for_next_turn += tool_results
+
+        payload_after_tool_call = {
+            "model": model_name,
+            "messages": messages_for_next_turn,
+            "stream": False
+            # No tools needed here, as we are just getting the final response based on tool results
+        }
+
+        self.add_to_workspace("Sistem", "Tool sonuçları modele gönderiliyor...")
+        try:
+            import requests
+            response = requests.post(model_url, json=payload_after_tool_call, headers={"Content-Type": "application/json"})
+            response.raise_for_status()
+            final_response_data = response.json()
+
+            self.add_to_workspace("Model Ham Cevap (Tool Sonrası)", json.dumps(final_response_data, indent=2, ensure_ascii=False))
+
+            final_content = final_response_data.get("message", {}).get("content", "Modelden nihai cevap alınamadı.")
+            self.add_to_workspace("Model", final_content)
+
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Tool sonrası API isteği başarısız: {e}"
+            self.add_to_workspace("Sistem Hatası", error_msg)
+            messagebox.showerror("API Hatası", error_msg)
+        except Exception as e:
+            error_msg = f"Tool sonrası beklemedik hata: {e}"
+            self.add_to_workspace("Sistem Hatası", error_msg)
+            messagebox.showerror("Genel Hata", error_msg)
+
+
+    def add_to_workspace(self, source: str, message: str):
+        """
+        Adds a message to the result_text (shared workspace) with a source prefix.
+
+        Args:
+            source (str): "Kullanıcı", "Model", "Sistem", "Hesaplama Sonucu", etc.
+            message (str): The message content.
+        """
+        formatted_message = f"\n\n{source}: {message}\n"
+        self.result_text.insert(tk.END, formatted_message)
+        self.result_text.see(tk.END) # Scroll to the end
 
 
     def update_calculations(self, event=None):
@@ -736,7 +1104,8 @@ class AdvancedCalculator:
 
     def update_result_display(self, result_data: dict):
         """
-        Updates the scrolled text area with formatted calculation inputs and results.
+        Updates the shared workspace (result_text) with formatted calculation inputs and results
+        using the add_to_workspace method.
 
         Args:
             result_data (dict): A dictionary containing:
@@ -744,24 +1113,17 @@ class AdvancedCalculator:
                 - 'parameters': Dictionary of input parameters used.
                 - 'result': The calculated result string.
         """
-        # Clear previous results (optional, could append instead)
-        # self.result_text.delete(1.0, tk.END) 
-        
-        # Format parameters for display
-        params_str = "\n".join([f"  - {key.replace('_', ' ').capitalize()}: {value}" for key, value in result_data['parameters'].items()])
+        calc_name = result_data.get('calculation', 'Bilinmeyen Hesaplama')
+        params = result_data.get('parameters', {})
+        result_str = result_data.get('result', 'Sonuç bulunamadı.')
 
-        # Construct the content in a Markdown-like format
-        content = f"\n\n## {result_data['calculation']} Sonuçları\n" # Turkish: " Results"
-        content += "------------------------------------\n"
-        content += "### Giriş Parametreleri:\n" # Turkish: "Input Parameters:"
-        content += f"{params_str}\n\n"
-        content += "### Hesaplama Sonucu:\n" # Turkish: "Calculation Result:"
-        content += f"```{result_data['result']}```\n"
-        content += "------------------------------------\n"
+        self.add_to_workspace("Sistem", f"Hesaplama: {calc_name}")
 
-        # Append new result to the text area
-        self.result_text.insert(tk.END, content)
-        self.result_text.see(tk.END) # Scroll to the end to show the latest result
+        param_details = "\n".join([f"  - {key.replace('_', ' ').capitalize()}: {value}" for key, value in params.items()])
+        if param_details:
+            self.add_to_workspace("Giriş Parametreleri", param_details)
+
+        self.add_to_workspace("Hesaplama Sonucu", result_str)
 
 
 if __name__ == "__main__":
