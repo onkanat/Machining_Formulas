@@ -31,6 +31,7 @@ import markdown # For rendering markdown text (if used, e.g. in results display)
 import re # Regular expressions, possibly for text processing or input validation.
 import math # For mathematical constants like pi.
 from tkinter import font # For font manipulation if needed.
+import requests # For making HTTP requests to the Ollama API.
 
 # --- Global Instance ---
 # Create a single instance of the EngineeringCalculator to be used by the GUI.
@@ -271,7 +272,7 @@ class AdvancedCalculator:
         ttk.Label(llm_frame, text="Model URL:", style='Calc.TLabel').pack(pady=(5,0), anchor='w')
         self.model_url_entry = ttk.Entry(llm_frame)
         self.model_url_entry.pack(fill='x', pady=(0,5))
-        self.model_url_entry.insert(0, "http://127.0.0.1:11434") # Default URL, user provided 192.168.1.14, but localhost is safer default
+        self.model_url_entry.insert(0, "http://192.168.1.14:11434") # Default URL, user provided 192.168.1.14, but localhost is safer default
         AdvancedToolTip(self.model_url_entry, self.tooltips.get("ModelURL", "Kullanılacak Ollama modelinin URL'si."))
 
         # Model Selection
@@ -315,7 +316,7 @@ class AdvancedCalculator:
 
         # Set default model URL
         self.model_url_entry.delete(0, tk.END)
-        self.model_url_entry.insert(0, "http://127.0.0.1:11434/api/chat") # More specific default for Ollama chat
+        self.model_url_entry.insert(0, "http://192.168.1.14:11434/api/chat") # More specific default for Ollama chat
 
     def send_prompt_to_model(self):
         """
@@ -456,12 +457,17 @@ class AdvancedCalculator:
 
         # We can list all possible shape parameters as optional to guide the model.
         all_shape_params = set()
-        for shape_k in ec.get_available_shapes().keys():
+        available_shapes = ec.get_available_shapes() # Get available shapes {key: turkish_name}
+        for shape_k in available_shapes.keys():
             for p_name in ec.get_shape_parameters(shape_k):
                 all_shape_params.add(p_name)
 
         for p_name in sorted(list(all_shape_params)):
              mass_params[p_name] = {"type": "number", "description": f"Şekle özel parametre: {p_name} (mm), eğer şekil için gerekliyse."}
+
+        # Update shape_key description to list available shapes
+        shape_keys_str = ", ".join(available_shapes.keys())
+        mass_params["shape_key"] = {"type": "string", "description": f"Malzemenin şekli. Geçerli değerler: {shape_keys_str}."}
 
 
         tools.append({
@@ -485,8 +491,19 @@ class AdvancedCalculator:
         """
         headers = {"Content-Type": "application/json"}
 
+        system_message = {
+            "role": "system",
+            "content": """Sen bir mühendislik hesaplama asistanısın. Kullanıcı isteklerini yanıtlamak için sana verilen araçları kullan.
+- Bir hesaplama istendiğinde, uygun aracı çağır.
+- Araç fonksiyon adları, açıklamalarında belirtilen hesaplama adlarından türetilmiştir. Fonksiyon adını tam olarak araç tanımında verildiği gibi kullan.
+- Fonksiyon için gerekli tüm argümanları sağla.
+- Bir aracı çağırdıktan sonra, sonucu sana vereceğim. Bu sonucu kullanarak kullanıcının sorusunu net ve anlaşılır bir şekilde yanıtla.
+- Hesaplama anahtarlarını ('calc_name') veya şekil anahtarlarını ('shape_key') tahmin etmeye çalışma, her zaman araç tanımında verilenlerden birini kullan."""
+        }
+
         conversation_history = self.get_conversation_history() # Gets previous messages
-        current_messages = conversation_history + [{"role": "user", "content": user_prompt}]
+        # Prepend system message to guide the model.
+        current_messages = [system_message] + conversation_history + [{"role": "user", "content": user_prompt}]
 
         tools = self._get_calculator_tools_definition()
 
@@ -494,10 +511,15 @@ class AdvancedCalculator:
             "model": model_name,
             "messages": current_messages,
             "stream": False, # Important for tool use, stream=True might behave differently
-            "tools": tools
+            "tools": tools,
+            "options": {
+                # Options can be added here if needed in the future
+            }
         }
 
-        self.add_to_workspace("Sistem", f"'{model_name}' modeline gönderiliyor...\nPrompt: {user_prompt}\nTools: {[t['function']['name'] for t in tools]}")
+        self.add_to_workspace("Sistem", f"""'{model_name}' modeline gönderiliyor...
+Prompt: {user_prompt}
+Tools: {[t['function']['name'] for t in tools]}""")
 
         try:
             import requests # Assuming requests is available
@@ -507,6 +529,7 @@ class AdvancedCalculator:
 
             self.add_to_workspace("Model Ham Cevap", json.dumps(response_data, indent=2, ensure_ascii=False)) # Log raw response
 
+            # The response itself is the assistant's message
             assistant_message = response_data.get("message", {})
 
             if assistant_message.get("tool_calls"):
@@ -540,24 +563,51 @@ class AdvancedCalculator:
 
         for tool_call in tool_calls:
             function_name_from_model = tool_call["function"]["name"]
-            arguments = json.loads(tool_call["function"]["arguments"]) # Arguments are a JSON string
-            tool_call_id = tool_call["id"] # Ollama provides an ID for each tool call
+            # Arguments are already a dict because response.json() parsed the whole body.
+            arguments = tool_call["function"]["arguments"]
+            # The model might not return an ID for the tool call, handle this safely.
+            tool_call_id = tool_call.get("id")
+
+            # Although the official spec implies an ID, some models might omit it.
+            # If no ID, we create a temporary one to proceed.
+            if not tool_call_id:
+                 import uuid
+                 tool_call_id = f"call_{uuid.uuid4()}"
+                 self.add_to_workspace("Sistem Uyarısı", f"Tool çağrısı '{function_name_from_model}' için model tarafından bir 'id' sağlanmadı. Geçici ID oluşturuldu: {tool_call_id}")
 
             self.add_to_workspace("Sistem", f"Tool Çağrısı: {function_name_from_model} ID: {tool_call_id} Argümanlar: {arguments}")
 
             result_content = ""
             try:
                 if function_name_from_model.startswith("calculate_turning_"):
-                    actual_calc_name = function_name_from_model.replace("calculate_turning_", "").replace("_", " ").title()
-                    # Ensure args are passed in the order expected by ec.calculate_turning
-                    # The order is defined by ec.get_calculation_params
+                    # Find the original calculation name (key) by matching the generated function name
+                    actual_calc_name = None
+                    model_func_name_part = function_name_from_model.replace("calculate_turning_", "")
+                    for key in ec.turning_definitions.keys():
+                        key_func_part = key.replace(' ', '_').lower()
+                        if model_func_name_part == key_func_part:
+                            actual_calc_name = key
+                            break
+                    if not actual_calc_name:
+                        raise ValueError(f"Geçersiz fonksiyon adı, bilinen bir tornalama hesabıyla eşleştirilemedi: {function_name_from_model}")
+
                     params_info = ec.get_calculation_params('turning', actual_calc_name)
                     ordered_args = [arguments[p['name']] for p in params_info]
                     calc_result = ec.calculate_turning(actual_calc_name, *ordered_args)
                     result_content = f"{calc_result['value']:.2f} {calc_result['units']}"
 
                 elif function_name_from_model.startswith("calculate_milling_"):
-                    actual_calc_name = function_name_from_model.replace("calculate_milling_", "").replace("_", " ").title()
+                    # Find the original calculation name (key)
+                    actual_calc_name = None
+                    model_func_name_part = function_name_from_model.replace("calculate_milling_", "")
+                    for key in ec.milling_definitions.keys():
+                        key_func_part = key.replace(' ', '_').lower()
+                        if model_func_name_part == key_func_part:
+                            actual_calc_name = key
+                            break
+                    if not actual_calc_name:
+                        raise ValueError(f"Geçersiz fonksiyon adı, bilinen bir frezeleme hesabıyla eşleştirilemedi: {function_name_from_model}")
+                        
                     params_info = ec.get_calculation_params('milling', actual_calc_name)
                     ordered_args = [arguments[p['name']] for p in params_info]
                     calc_result = ec.calculate_milling(actual_calc_name, *ordered_args)
@@ -567,13 +617,9 @@ class AdvancedCalculator:
                     shape_key = arguments.pop("shape_key")
                     density = arguments.pop("density")
                     length = arguments.pop("length") # Extrusion length
-
-                    # Other arguments are shape-specific dimensions. Order them as per ec.get_shape_parameters
-                    shape_dim_names = ec.get_shape_parameters(shape_key) # e.g., ['width', 'height']
+                    shape_dim_names = ec.get_shape_parameters(shape_key)
                     shape_dims_values = [arguments[dim_name] for dim_name in shape_dim_names]
-
-                    all_args_for_mass = shape_dims_values + [length] # length is the last arg for volume calc
-
+                    all_args_for_mass = shape_dims_values + [length]
                     mass_val = ec.calculate_material_mass(shape_key, density, *all_args_for_mass)
                     result_content = f"{mass_val:.2f} gram"
 
@@ -603,12 +649,10 @@ class AdvancedCalculator:
             "model": model_name,
             "messages": messages_for_next_turn,
             "stream": False
-            # No tools needed here, as we are just getting the final response based on tool results
         }
 
         self.add_to_workspace("Sistem", "Tool sonuçları modele gönderiliyor...")
         try:
-            import requests
             response = requests.post(model_url, json=payload_after_tool_call, headers={"Content-Type": "application/json"})
             response.raise_for_status()
             final_response_data = response.json()
@@ -773,7 +817,7 @@ class AdvancedCalculator:
             # Find the Turkish GUI key for the current English parameter name
             gui_key_turkish = param_to_gui_key_map.get(p_name_english, p_name_english.capitalize()) # Fallback to capitalized English name if no direct map
             if gui_key_turkish not in input_params:
-                raise ValueError(f"'{gui_key_turkish}' parametresi için değer eksik.") # Turkish: "Missing value for parameter '{gui_key_turkish}'."
+                raise ValueError(f"\'{gui_key_turkish}\' parametresi için değer eksik.") # Turkish: "Missing value for parameter '{gui_key_turkish}'."
             args_for_calculator.append(float(input_params[gui_key_turkish]))
         
         # Append the common 'Uzunluk' (Length) parameter, which is always present for extrusion
@@ -872,7 +916,7 @@ class AdvancedCalculator:
             # This case should ideally not be reached if GUI is set up correctly with calc_types
             raise ValueError(f"Bilinmeyen hesaplama kategorisi: {calc_category}") # Turkish: "Unknown calculation category"
 
-    def enable_execute_mode(self, event: tk.Event = None):
+    def enable_execute_mode(self, event: tk.Event | None = None):
         """
         Enables an experimental 'execute mode' for the result text area.
         
@@ -886,7 +930,7 @@ class AdvancedCalculator:
         self.execute_mode = True
         self.result_text.insert(tk.END, "\n\n--- Execute Modu Aktif --- \nKod seçip Ctrl+C ile çalıştırın.\n") # Turkish: Execute Mode Active. Select code and run with Ctrl+C
 
-    def execute_calculation(self, event: tk.Event = None):
+    def execute_calculation(self, event: tk.Event | None = None):
         """
         Executes Python code selected in the result text area if 'execute mode' is active.
 
@@ -927,7 +971,7 @@ class AdvancedCalculator:
             self.result_text.insert(tk.END, "\n--- Execute Modu Devre Dışı ---\n") # Turkish: Execute Mode Deactivated
 
 
-    def update_input_fields(self, event: 'tk.Event' = None):
+    def update_input_fields(self, event: tk.Event | None = None):
         """
         Dinamik olarak GUI'deki parametre alanlarını günceller. Her hesaplama türü ve seçimi için gerekli alanlar gösterilir.
         """
@@ -984,7 +1028,7 @@ class AdvancedCalculator:
                 except ValueError as e:
                     ttk.Label(self.params_container, text="Bu hesaplama için parametre tanımlanmamış.", style='Calc.TLabel').pack()
 
-    def _update_material_params(self, event=None):
+    def _update_material_params(self, event: tk.Event | None = None):
         """
         Kütle hesabı için şekil seçildiğinde yoğunluk ve şekil parametrelerini günceller.
         """
@@ -1026,7 +1070,7 @@ class AdvancedCalculator:
         selected_shape_turkish = self.shape_combo.get() if self.shape_combo else None
         shape_key = self.reverse_shape_names.get(selected_shape_turkish) if selected_shape_turkish else None
         if shape_key:
-            param_to_turkish_map = {
+            param_to_gui_key_map = {
                 'radius': 'Yarıçap', 'width': 'Genişlik', 'height': 'Yükseklik',
                 'length1': 'Uzunluk 1', 'height1': 'Yükseklik 1',
                 'length2': 'Uzunluk 2', 'height2': 'Yükseklik 2',
@@ -1035,7 +1079,7 @@ class AdvancedCalculator:
             shape_specific_params_english = ec.get_shape_parameters(shape_key)
             gui_params_to_create = []
             for p_name_english in shape_specific_params_english:
-                turkish_label = param_to_turkish_map.get(p_name_english, p_name_english.capitalize())
+                turkish_label = param_to_gui_key_map.get(p_name_english, p_name_english.capitalize())
                 gui_params_to_create.append((turkish_label, 'mm', p_name_english))
             gui_params_to_create.append(('Uzunluk', 'mm', 'Uzunluk'))
             for param_label_turkish, unit_str, tooltip_key in gui_params_to_create:
