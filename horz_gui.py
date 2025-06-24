@@ -493,12 +493,17 @@ class AdvancedCalculator:
 
         system_message = {
             "role": "system",
-            "content": """Sen bir mühendislik hesaplama asistanısın. Kullanıcı isteklerini yanıtlamak için sana verilen araçları kullan.
+            "content": """
+Sen bir mühendislik hesaplama asistanısın. Kullanıcı isteklerini yanıtlamak için sana verilen araçları (tool) kullan.
 - Bir hesaplama istendiğinde, uygun aracı çağır.
-- Araç fonksiyon adları, açıklamalarında belirtilen hesaplama adlarından türetilmiştir. Fonksiyon adını tam olarak araç tanımında verildiği gibi kullan.
-- Fonksiyon için gerekli tüm argümanları sağla.
-- Bir aracı çağırdıktan sonra, sonucu sana vereceğim. Bu sonucu kullanarak kullanıcının sorusunu net ve anlaşılır bir şekilde yanıtla.
-- Hesaplama anahtarlarını ('calc_name') veya şekil anahtarlarını ('shape_key') tahmin etmeye çalışma, her zaman araç tanımında verilenlerden birini kullan."""
+- Araç fonksiyon adlarını ve parametre isimlerini, araç tanımında (tools) verildiği şekilde **birebir aynı** kullan.
+- Fonksiyon için gerekli **tüm argümanları** ve sadece gerekli olanları sağla. Eksik veya fazla parametre gönderme.
+- Parametre isimleri ve tipleri araç tanımındakiyle **tam uyumlu** olmalı.
+- Hesaplama anahtarlarını ('calc_name') veya şekil anahtarlarını ('shape_key') tahmin etmeye çalışma, her zaman araç tanımında verilenlerden birini kullan.
+- Eğer emin değilsen, araç tanımındaki açıklamaları ve örnekleri referans al.
+- Yanıt verirken, önce tool sonucunu bekle ve ardından kullanıcıya net ve anlaşılır bir cevap ver.
+- Örnek: "Çapı 50 mm olan bir parçayı 1000 rpm'de işlerken kesme hızı nedir?" gibi sorularda, tool fonksiyonunu doğru parametrelerle çağır.
+"""
         }
 
         conversation_history = self.get_conversation_history() # Gets previous messages
