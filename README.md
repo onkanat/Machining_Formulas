@@ -96,7 +96,7 @@ Bu uygulama artık mühendislik hesaplamaları için konuşma tabanlı bir aray�
     ```bash
     pip install -r requirements.txt
     ```
-2. **Ollama'yı Çalıştırın:** Ollama sunucunuzun çalıştığından ve istediğiniz modelin (ör. `llama3.1`) kullanılabilir olduğundan emin olun. Uygulama varsayılan olarak `http://localhost:11434` adresine bağlanacak şekilde yapılandırılmıştır.
+2. **Ollama'yı Çalıştırın:** Ollama sunucunuzun çalıştığından ve istediğiniz modelin (ör. `llama3.1`) kullanılabilir olduğundan emin olun. Uygulama varsayılan olarak `http://localhost:11434/api/chat` uç noktasını kullanır ve model listesini `http://localhost:11434/api/tags` üzerinden dinamik olarak çeker.
 3. **Uygulamayı Çalıştırın:**
     ```bash
     python horz_gui.py

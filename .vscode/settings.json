@@ -1,7 +1,7 @@
 {
     "files.autoSave": "onFocusChange",
     "editor.cursorStyle": "line",
-    "editor.minimap.autohide": true,
+    "editor.minimap.autohide": "mouseover",
     "window.autoDetectColorScheme": true,
     "liveServer.settings.CustomBrowser": "chrome",
     "python.createEnvironment.contentButton": "show",
