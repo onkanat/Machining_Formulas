@@ -105,10 +105,12 @@ class AdvancedToolTip:
         if self.tooltip: # If tooltip is already shown, do nothing.
             return
 
-        # Calculate tooltip position
-        x, y, _, _ = self.widget.bbox("insert") # Get widget bounding box.
-        x += self.widget.winfo_rootx() + 25     # Offset from widget's root window position.
-        y += self.widget.winfo_rooty() + 20
+        # Calculate tooltip position safely without relying on bbox (not supported by all widgets)
+        try:
+            x = self.widget.winfo_rootx() + 20
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
+        except Exception:
+            x, y = 100, 100
 
         # Create a Toplevel window for the tooltip.
         self.tooltip = tk.Toplevel(self.widget)
@@ -272,19 +274,20 @@ class AdvancedCalculator:
         ttk.Label(llm_frame, text="Model URL:", style='Calc.TLabel').pack(pady=(5,0), anchor='w')
         self.model_url_entry = ttk.Entry(llm_frame)
         self.model_url_entry.pack(fill='x', pady=(0,5))
-        self.model_url_entry.insert(0, "http://192.168.1.14:11434") # Default URL, user provided 192.168.1.14, but localhost is safer default
+        # Unified default: Ollama chat endpoint on localhost
+        self.model_url_entry.insert(0, "http://localhost:11434/api/chat")
         AdvancedToolTip(self.model_url_entry, self.tooltips.get("ModelURL", "Kullanılacak Ollama modelinin URL'si."))
 
         # Model Selection
         ttk.Label(llm_frame, text="Model Seçin:", style='Calc.TLabel').pack(pady=(5,0), anchor='w')
         self.model_selection_combo = ttk.Combobox(llm_frame, state="readonly")
         self.model_selection_combo.pack(fill='x', pady=(0,5))
-        # Model list will be populated from user's provided JSON
-        model_names = ["devstral:24b", "qwen3:32b", "gemma3:27b", "gemma3:latest"] # Placeholder, will be dynamic if possible
-        self.model_selection_combo['values'] = model_names
-        if model_names:
-            self.model_selection_combo.set(model_names[0])
+        # Model list is populated dynamically from Ollama /api/tags with graceful fallback
+        self.model_selection_combo['values'] = []
+        # We'll attempt to fetch models after widgets are set
         AdvancedToolTip(self.model_selection_combo, self.tooltips.get("ModelSecimi", "Kullanılacak LLM modelini seçin."))
+        # Reset conversation when model changes
+        self.model_selection_combo.bind('<<ComboboxSelected>>', self.on_model_change)
 
         # Chat Prompt Input
         ttk.Label(llm_frame, text="Soru / Prompt:", style='Calc.TLabel').pack(pady=(5,0), anchor='w')
@@ -297,6 +300,18 @@ class AdvancedCalculator:
         self.send_prompt_button.pack(pady=10, fill='x', ipady=5)
         AdvancedToolTip(self.send_prompt_button, self.tooltips.get("GonderButonu", "Soruyu modele gönder."))
 
+        # Track current model/chat session state
+        self.current_model_name = None
+        self.current_chat_url = None
+        self.reset_history_next_prompt = False
+        # Also consider URL changes as a reset signal
+        self.model_url_entry.bind('<FocusOut>', self.on_model_url_change)
+        self.model_url_entry.bind('<Return>', self.on_model_url_change)
+        # --- Conversation History (structured) ---
+        # Holds list of {role: 'user'|'assistant'|'tool', content: str, ...}
+        # System mesajı, her istekte başa eklenir; bu listede tutulmaz.
+        self.history = []
+
         # --- Initialize dynamic fields ---
         self.input_fields = {}
         self.reverse_shape_names = {}
@@ -308,15 +323,16 @@ class AdvancedCalculator:
             self.calc_type.set(list(self.calc_types.keys())[0])
             self.update_calculations()
 
-        # Initialize model list for the combobox
-        self.ollama_models = ["devstral:24b", "qwen3:32b", "gemma3:27b", "gemma3:latest"]
-        self.model_selection_combo['values'] = self.ollama_models
-        if self.ollama_models:
-            self.model_selection_combo.set(self.ollama_models[0])
+        # Try to fetch available models now
+        try:
+            self.refresh_model_list()
+        except Exception:
+            # Fallback to a small static list if fetch fails
+            self.ollama_models = ["llama3.1", "qwen2.5", "gemma2"]
+            self.model_selection_combo['values'] = self.ollama_models
+            if self.ollama_models:
+                self.model_selection_combo.set(self.ollama_models[0])
 
-        # Set default model URL
-        self.model_url_entry.delete(0, tk.END)
-        self.model_url_entry.insert(0, "http://192.168.1.14:11434/api/chat") # More specific default for Ollama chat
 
     def send_prompt_to_model(self):
         """
@@ -335,12 +351,6 @@ class AdvancedCalculator:
         # Add user's prompt to the shared workspace (result_text)
         self.add_to_workspace("Kullanıcı", user_prompt)
 
-        # Placeholder for backend call
-        # self.backend_send_to_ollama(model_url, selected_model, user_prompt, self.get_conversation_history())
-
-        # Simulate model thinking and responding (replace with actual backend call later)
-        # self.add_to_workspace("Sistem", f"'{selected_model}' modeline '{user_prompt[:50]}...' prompt'u gönderiliyor (URL: {model_url})...")
-
         # Actual backend call
         self.call_ollama_api(model_url, selected_model, user_prompt)
 
@@ -348,41 +358,10 @@ class AdvancedCalculator:
 
     def get_conversation_history(self) -> list[dict]:
         """
-        Retrieves the content of the result_text area and attempts to parse it into
-        Ollama's expected messages format.
+        Yapılandırılmış konuşma geçmişini döndürür.
+        Not: Sistem mesajı bu listede tutulmaz; her istekte başa ayrıca eklenir.
         """
-        full_history_text = self.result_text.get("1.0", tk.END).strip()
-        messages = []
-        # Simple parsing based on prefixes. More robust parsing might be needed.
-        # This assumes "Kullanıcı:", "Model:", "Sistem:" prefixes.
-        # Tool calls and results need special handling if they are to be part of history explicitly.
-        # For now, we'll primarily focus on user and assistant (model) messages for context.
-
-        # Split by double newlines which separate our entries
-        entries = re.split(r'\n\n', full_history_text)
-        for entry in entries:
-            entry = entry.strip()
-            if entry.startswith("Kullanıcı:"):
-                messages.append({"role": "user", "content": entry.replace("Kullanıcı:", "", 1).strip()})
-            elif entry.startswith("Model:"):
-                # Check if this is a tool call response from the model
-                if "Tool Call:" in entry: # Assuming we format tool calls like this
-                    # We might need to parse the tool call to include it correctly if Ollama expects that
-                    # For now, let's treat it as a generic assistant message or decide how to format it
-                    # Based on Ollama's tool use documentation, assistant can reply with tool_calls
-                    # This part will be refined when handling tool call responses.
-                    # For now, we just add the text content.
-                    messages.append({"role": "assistant", "content": entry.replace("Model:", "", 1).strip()})
-                else:
-                    messages.append({"role": "assistant", "content": entry.replace("Model:", "", 1).strip()})
-            # Ignoring "Sistem:", "Giriş Parametreleri:", "Hesaplama Sonucu:" for Ollama context for now,
-            # unless they are specifically part of what the model should see as 'assistant' or 'user' dialogue.
-            # Tool results will be added with role 'tool'.
-
-        # Ensure the last message is from the user if the current prompt is from the user.
-        # The user_prompt is added separately in call_ollama_api.
-        # This history should represent what came *before* the current user_prompt.
-        return messages
+        return list(self.history)
 
     def _get_calculator_tools_definition(self) -> list[dict]:
         """
@@ -484,6 +463,80 @@ class AdvancedCalculator:
         })
         return tools
 
+    def _normalize_chat_url(self, url: str) -> str:
+        """
+        Ensures the provided URL points to Ollama chat endpoint (/api/chat).
+        Accepts base URLs like http://host:11434 or http://host:11434/api and normalizes to /api/chat.
+        """
+        if not url:
+            return "http://localhost:11434/api/chat"
+        u = url.strip()
+        # If already /api/chat
+        if "/api/chat" in u:
+            # ensure no trailing spaces
+            return u
+        # Convert /api/tags or any /api/* to /api/chat
+        if "/api/" in u:
+            base = u.split("/api/")[0]
+            return base + "/api/chat"
+        # Ends with /api
+        if u.endswith("/api"):
+            return u + "/chat"
+        # Base host: append /api/chat
+        if u.endswith('/'):
+            u = u[:-1]
+        return u + "/api/chat"
+
+    def _build_tags_url(self, url: str) -> str:
+        """Builds the Ollama tags endpoint URL from a given chat/base URL."""
+        if not url:
+            return "http://localhost:11434/api/tags"
+        u = url.strip()
+        if "/api/tags" in u:
+            return u
+        if "/api/chat" in u:
+            return u.replace("/api/chat", "/api/tags")
+        if "/api/" in u:
+            base = u.split("/api/")[0]
+            return base + "/api/tags"
+        if u.endswith("/api"):
+            return u + "/tags"
+        if u.endswith('/'):
+            u = u[:-1]
+        return u + "/api/tags"
+
+    def refresh_model_list(self):
+        """Fetch available Ollama models via /api/tags and populate the combobox with fallback."""
+        tags_url = self._build_tags_url(self.model_url_entry.get())
+        try:
+            resp = requests.get(tags_url, timeout=60)
+            resp.raise_for_status()
+            data = resp.json()
+            models = []
+            # Ollama returns {"models": [{"name": "llama3:8b", ...}, ...]}
+            if isinstance(data, dict):
+                items = data.get("models") or data.get("data") or []
+                for m in items:
+                    # Prefer 'name', fallback to 'model'
+                    name = m.get("name") or m.get("model")
+                    if isinstance(name, str):
+                        models.append(name)
+            # Fallback if parsing failed
+            if not models:
+                models = ["llama3.1", "qwen2.5", "gemma2"]
+                self.add_to_workspace("Sistem Uyarısı", "Model listesi alınamadı, varsayılan liste kullanılacak.")
+            self.ollama_models = models
+            self.model_selection_combo['values'] = self.ollama_models
+            if self.ollama_models and self.model_selection_combo.get() not in self.ollama_models:
+                self.model_selection_combo.set(self.ollama_models[0])
+        except requests.exceptions.RequestException as e:
+            # Network or server error: fallback
+            self.ollama_models = ["llama3.1", "qwen2.5", "gemma2"]
+            self.model_selection_combo['values'] = self.ollama_models
+            if self.ollama_models and self.model_selection_combo.get() not in self.ollama_models:
+                self.model_selection_combo.set(self.ollama_models[0])
+            self.add_to_workspace("Sistem Uyarısı", f"Model listesi alınamadı ({e}). Varsayılan liste kullanılıyor.")
+
     def call_ollama_api(self, model_url: str, model_name: str, user_prompt: str):
         """
         Calls the Ollama API with the given prompt, model, and conversation history.
@@ -491,19 +544,70 @@ class AdvancedCalculator:
         """
         headers = {"Content-Type": "application/json"}
 
+        # Build dynamic guidance: shapes and material densities
+        try:
+            shapes_map = ec.get_available_shapes()
+        except Exception:
+            shapes_map = {}
+        shapes_list = ", ".join([f"{k} (TR: {v})" for k, v in shapes_map.items()])
+
+        try:
+            densities = ec.material_density
+        except Exception:
+            densities = {}
+        dens_list = ", ".join([f"{name}: {val} g/cm³" for name, val in densities.items()])
+
+        system_instructions = f"""
+Sen bir mühendislik hesaplama asistanısın. Kullanıcı isteklerini yanıtlamak için sana verilen araçları (tool) kullan.
+
+Kritik kurallar (uygulamak ZORUNLU):
+- Bir hesaplama istendiğinde, uygun aracı çağır ve ilk mesajında SADECE tool_calls döndür. Serbest metin yazma.
+- Araç fonksiyon adlarını ve parametre isimlerini, araç tanımında (tools) verildiği şekilde birebir aynı kullan.
+- Gerekli parametrelerin hepsini sağla, fazladan parametre yollama.
+- Birimlere dikkat et: uzunluklar mm, yoğunluk g/cm³. Kütle aracı gram döndürür; nihai mesajında gr ve kg olarak sun.
+
+Şekil ve malzeme ipuçları:
+- Geçerli şekiller: {shapes_list}
+- Türkçe→shape_key eşleştirme örnekleri: "yuvarlak"/"daire"→circle, "kare"→square, "dikdörtgen"→rectangle.
+- "çap" verildiyse yarıçap = çap/2. circle için parametre adı radius olmalı.
+- Malzeme yoğunluğu verilmemişse, bilinen Türkçe adıyla eşleştir: {dens_list}
+  Örn: Çelik=7.85, Alüminyum=2.70 (g/cm³).
+
+Cevaplama akışı:
+1) Gerekliyse uygun aracı tool_calls ile çağır.
+2) Tool sonucu geldikten sonra nihai Türkçe cevabı yaz; hem g hem kg göster (ör. 4712.39 g (4.712 kg)).
+
+Örnek 1 (kütle hesabı):
+Kullanıcı: "Çapı 100 mm olan yuvarlak çelik malzeme, boy 100 mm; ağırlığı?"
+assistant (tool_calls): [{{"type":"function","function":{{"name":"calculate_material_mass","arguments":{{"shape_key":"circle","density":7.85,"radius":50,"length":100}}}}}}]
+Tool sonrası: "Ağırlık: 61685.03 g (61.685 kg)" gibi.
+
+Örnek 2 (tornalama kesme hızı):
+assistant (tool_calls): [{{"type":"function","function":{{"name":"calculate_turning_cutting_speed","arguments":{{"Dm":50,"n":1000}}}}}}]
+"""
+
         system_message = {
             "role": "system",
-            "content": """Sen bir mühendislik hesaplama asistanısın. Kullanıcı isteklerini yanıtlamak için sana verilen araçları kullan.
-- Bir hesaplama istendiğinde, uygun aracı çağır.
-- Araç fonksiyon adları, açıklamalarında belirtilen hesaplama adlarından türetilmiştir. Fonksiyon adını tam olarak araç tanımında verildiği gibi kullan.
-- Fonksiyon için gerekli tüm argümanları sağla.
-- Bir aracı çağırdıktan sonra, sonucu sana vereceğim. Bu sonucu kullanarak kullanıcının sorusunu net ve anlaşılır bir şekilde yanıtla.
-- Hesaplama anahtarlarını ('calc_name') veya şekil anahtarlarını ('shape_key') tahmin etmeye çalışma, her zaman araç tanımında verilenlerden birini kullan."""
+            "content": system_instructions
         }
 
-        conversation_history = self.get_conversation_history() # Gets previous messages
+        # Normalize URL and decide whether to reset history on model/URL change
+        chat_url = self._normalize_chat_url(model_url)
+        should_reset = (
+            self.reset_history_next_prompt or
+            (self.current_model_name is not None and self.current_model_name != model_name) or
+            (self.current_chat_url is not None and self.current_chat_url != chat_url)
+        )
+
+        if should_reset:
+            self.history = []
+            self.add_to_workspace("Sistem", f"Yeni modele/URL'ye geçildi. Konuşma geçmişi bu istek için sıfırlandı.")
+        
+        # Append current user prompt to structured history
+        self.history.append({"role": "user", "content": user_prompt})
+
         # Prepend system message to guide the model.
-        current_messages = [system_message] + conversation_history + [{"role": "user", "content": user_prompt}]
+        current_messages = [system_message] + self.get_conversation_history()
 
         tools = self._get_calculator_tools_definition()
 
@@ -513,7 +617,9 @@ class AdvancedCalculator:
             "stream": False, # Important for tool use, stream=True might behave differently
             "tools": tools,
             "options": {
-                # Options can be added here if needed in the future
+                # Lower temperature and reasonable top_p improve tool_call adherence
+                "temperature": 0.2,
+                "top_p": 0.9
             }
         }
 
@@ -522,8 +628,8 @@ Prompt: {user_prompt}
 Tools: {[t['function']['name'] for t in tools]}""")
 
         try:
-            import requests # Assuming requests is available
-            response = requests.post(model_url, json=payload, headers=headers)
+            # Call with timeout
+            response = requests.post(chat_url, json=payload, headers=headers, timeout=60)
             response.raise_for_status()  # Raise an exception for HTTP errors
             response_data = response.json()
 
@@ -532,13 +638,81 @@ Tools: {[t['function']['name'] for t in tools]}""")
             # The response itself is the assistant's message
             assistant_message = response_data.get("message", {})
 
-            if assistant_message.get("tool_calls"):
+            tool_calls_payload = assistant_message.get("tool_calls")
+            if tool_calls_payload:
                 self.add_to_workspace("Model", "Bir araç kullanmak istiyor...")
-                self.handle_tool_calls(model_url, model_name, current_messages, assistant_message["tool_calls"], tools)
+                # Add assistant with tool_calls to history
+                self.history.append({"role": "assistant", "content": "", "tool_calls": tool_calls_payload})
+                self.handle_tool_calls(model_url, model_name, current_messages, tool_calls_payload, tools)
             else:
-                content = assistant_message.get("content", "Modelden içerik alınamadı.")
-                self.add_to_workspace("Model", content)
+                # Fallback: try to parse tool_calls JSON embedded in content
+                content = assistant_message.get("content", "")
+                parsed_tool_calls = None
+                if isinstance(content, str) and content:
+                    try:
+                        # Capture first JSON array that looks like tool_calls
+                        m = re.search(r"\[(?:\s|\S)*?\{\s*\"type\"\s*:\s*\"function\"(?:.|\n)*?\]\s*", content)
+                        if m:
+                            parsed_tool_calls = json.loads(m.group(0))
+                    except Exception:
+                        parsed_tool_calls = None
 
+                if parsed_tool_calls:
+                    self.add_to_workspace("Model", "İçerikte gömülü tool çağrıları bulundu, işleniyor...")
+                    # Record assistant tool_calls in history
+                    self.history.append({"role": "assistant", "content": "", "tool_calls": parsed_tool_calls})
+                    self.handle_tool_calls(model_url, model_name, current_messages, parsed_tool_calls, tools)
+                else:
+                    content_final = content or "Modelden içerik alınamadı."
+                    self.add_to_workspace("Model", content_final)
+                    # Append assistant free-form content to history
+                    self.history.append({"role": "assistant", "content": content_final})
+
+        except requests.exceptions.ReadTimeout as e:
+            # One-shot retry with simplified history (fresh turn)
+            self.add_to_workspace("Sistem Uyarısı", f"İstek zaman aşımına uğradı, sadeleştirilmiş geçmişle yeniden denenecek...")
+            retry_payload = {
+                "model": model_name,
+                "messages": [system_message, {"role": "user", "content": user_prompt}],
+                "stream": False,
+                "tools": tools,
+                "options": payload.get("options", {})
+            }
+            try:
+                response = requests.post(chat_url, json=retry_payload, headers=headers, timeout=60)
+                response.raise_for_status()
+                response_data = response.json()
+
+                self.add_to_workspace("Model Ham Cevap", json.dumps(response_data, indent=2, ensure_ascii=False))
+
+                assistant_message = response_data.get("message", {})
+                tool_calls_payload = assistant_message.get("tool_calls")
+                if tool_calls_payload:
+                    self.add_to_workspace("Model", "Bir araç kullanmak istiyor...")
+                    self.history.append({"role": "assistant", "content": "", "tool_calls": tool_calls_payload})
+                    self.handle_tool_calls(model_url, model_name, [system_message, {"role": "user", "content": user_prompt}], tool_calls_payload, tools)
+                else:
+                    content = assistant_message.get("content", "")
+                    parsed_tool_calls = None
+                    if isinstance(content, str) and content:
+                        try:
+                            m = re.search(r"\[(?:\s|\S)*?\{\s*\"type\"\s*:\s*\"function\"(?:.|\n)*?\]\s*", content)
+                            if m:
+                                parsed_tool_calls = json.loads(m.group(0))
+                        except Exception:
+                            parsed_tool_calls = None
+                    if parsed_tool_calls:
+                        self.add_to_workspace("Model", "İçerikte gömülü tool çağrıları bulundu, işleniyor...")
+                        self.history.append({"role": "assistant", "content": "", "tool_calls": parsed_tool_calls})
+                        self.handle_tool_calls(model_url, model_name, [system_message, {"role": "user", "content": user_prompt}], parsed_tool_calls, tools)
+                    else:
+                        content_final = content or "Modelden içerik alınamadı."
+                        self.add_to_workspace("Model", content_final)
+                        self.history.append({"role": "assistant", "content": content_final})
+            except Exception as e2:
+                error_msg = f"Yeniden deneme de başarısız: {e2}"
+                self.add_to_workspace("Sistem Hatası", error_msg)
+                messagebox.showerror("API Hatası", error_msg)
         except requests.exceptions.RequestException as e:
             error_msg = f"API isteği başarısız: {e}"
             self.add_to_workspace("Sistem Hatası", error_msg)
@@ -551,13 +725,18 @@ Tools: {[t['function']['name'] for t in tools]}""")
             error_msg = f"Beklenmedik bir hata oluştu: {e}"
             self.add_to_workspace("Sistem Hatası", error_msg)
             messagebox.showerror("Genel Hata", error_msg)
+        else:
+            # Update session tracking after a successful call
+            self.current_model_name = model_name
+            self.current_chat_url = chat_url
+            self.reset_history_next_prompt = False
 
     def handle_tool_calls(self, model_url: str, model_name: str, messages_history: list, tool_calls: list, tools_definition: list):
         """
         Executes tool calls requested by the model and sends results back to Ollama.
         """
         # Add the assistant's message with tool_calls to history for the next API call
-        messages_for_next_turn = messages_history + [{"role": "assistant", "content": None, "tool_calls": tool_calls}]
+        messages_for_next_turn = messages_history + [{"role": "assistant", "content": "", "tool_calls": tool_calls}]
 
         tool_results = []
 
@@ -571,9 +750,9 @@ Tools: {[t['function']['name'] for t in tools]}""")
             # Although the official spec implies an ID, some models might omit it.
             # If no ID, we create a temporary one to proceed.
             if not tool_call_id:
-                 import uuid
-                 tool_call_id = f"call_{uuid.uuid4()}"
-                 self.add_to_workspace("Sistem Uyarısı", f"Tool çağrısı '{function_name_from_model}' için model tarafından bir 'id' sağlanmadı. Geçici ID oluşturuldu: {tool_call_id}")
+                import uuid
+                tool_call_id = f"call_{uuid.uuid4()}"
+                self.add_to_workspace("Sistem Uyarısı", f"Tool çağrısı '{function_name_from_model}' için model tarafından bir 'id' sağlanmadı. Geçici ID oluşturuldu: {tool_call_id}")
 
             self.add_to_workspace("Sistem", f"Tool Çağrısı: {function_name_from_model} ID: {tool_call_id} Argümanlar: {arguments}")
 
@@ -607,27 +786,262 @@ Tools: {[t['function']['name'] for t in tools]}""")
                             break
                     if not actual_calc_name:
                         raise ValueError(f"Geçersiz fonksiyon adı, bilinen bir frezeleme hesabıyla eşleştirilemedi: {function_name_from_model}")
-                        
+
                     params_info = ec.get_calculation_params('milling', actual_calc_name)
                     ordered_args = [arguments[p['name']] for p in params_info]
                     calc_result = ec.calculate_milling(actual_calc_name, *ordered_args)
                     result_content = f"{calc_result['value']:.2f} {calc_result['units']}"
 
                 elif function_name_from_model == "calculate_material_mass":
-                    shape_key = arguments.pop("shape_key")
-                    density = arguments.pop("density")
-                    length = arguments.pop("length") # Extrusion length
+                    # Normalize and validate inputs from the model
+                    try:
+                        raw_shape_key = arguments.pop("shape_key")
+                    except KeyError:
+                        raise ValueError("'shape_key' parametresi eksik")
+
+                    # Canonicalize common shape aliases (TR/EN)
+                    shape_aliases = {
+                        'cylinder': 'circle',
+                        'silindir': 'circle',
+                        'yuvarlak': 'circle',
+                        'daire': 'circle',
+                        'yarım daire': 'semi-circle',
+                        'semi_circle': 'semi-circle',
+                        'semi-circle': 'semi-circle',
+                        'dikdörtgen': 'rectangle',
+                        'kare': 'square',
+                        'üçgen': 'triangle',
+                        'paralelkenar': 'parallelogram',
+                        'eşkenar dörtgen': 'rhombus',
+                        'yamuk': 'trapezium',
+                    }
+                    # Ensure normalized, non-empty string key
+                    shape_key = shape_aliases.get(str(raw_shape_key).lower(), str(raw_shape_key).lower())
+
+                    # Density or material name
+                    try:
+                        density = float(arguments.pop("density"))
+                    except KeyError:
+                        # Try to infer from material name (TR/EN aliases) or user text
+                        material_key = None
+                        for mk in ("material", "malzeme", "material_name"):
+                            if mk in arguments:
+                                material_key = mk
+                                break
+                        mat_aliases = {
+                            'çelik': 'Çelik', 'steel': 'Çelik',
+                            'alüminyum': 'Alüminyum', 'aluminum': 'Alüminyum', 'aluminium': 'Alüminyum',
+                            'bakır': 'Bakır', 'copper': 'Bakır',
+                            'pirinç': 'Pirinç', 'brass': 'Pirinç',
+                            'dökme demir': 'Dökme Demir', 'cast iron': 'Dökme Demir',
+                            'plastik': 'Plastik', 'plastic': 'Plastik',
+                            'titanyum': 'Titanyum', 'titanium': 'Titanyum',
+                            'kurşun': 'Kurşun', 'lead': 'Kurşun',
+                            'çinko': 'Çinko', 'zinc': 'Çinko',
+                            'nikel': 'Nikel', 'nickel': 'Nikel',
+                        }
+                        canonical_mat = None
+                        if material_key:
+                            raw_mat = str(arguments.pop(material_key)).strip()
+                            canonical_mat = mat_aliases.get(raw_mat.lower(), raw_mat)
+                        else:
+                            # Scan recent user message for a known material keyword
+                            user_text = None
+                            for msg in reversed(messages_history):
+                                if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+                                    user_text = msg["content"]
+                                    break
+                            if user_text:
+                                lower_text = user_text.lower()
+                                for alias, canonical in mat_aliases.items():
+                                    if alias in lower_text:
+                                        canonical_mat = canonical
+                                        break
+                        if canonical_mat:
+                            try:
+                                density = float(ec.get_material_density(canonical_mat))
+                            except ValueError:
+                                density = float(ec.get_material_density(canonical_mat.title()))
+                        else:
+                            raise ValueError("'density' (g/cm³) veya malzeme adı saptanamadı")
+
+                    # Accept length synonyms if model omits the exact key
+                    length = arguments.pop("length", None)  # Extrusion length in mm
+                    if length is None:
+                        for len_key in ("L", "uzunluk", "boy", "length_mm"):
+                            if len_key in arguments:
+                                length = arguments.pop(len_key)
+                                break
+                    if length is None:
+                        # Try to infer from latest user text (e.g., "boy 100 mm", "uzunluk 120")
+                        try:
+                            user_text = None
+                            for msg in reversed(messages_history):
+                                if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+                                    user_text = msg["content"].lower()
+                                    break
+                            if user_text:
+                                import re as _re
+                                m = _re.search(r"(boy|uzunluk|length)\D*(\d+(?:[\.,]\d+)?)", user_text)
+                                if m:
+                                    length = m.group(2).replace(',', '.')
+                        except Exception:
+                            pass
+                    if length is None:
+                        raise ValueError("'length' (mm) parametresi eksik")
+                    try:
+                        length = float(length)
+                    except Exception:
+                        raise ValueError("'length' (mm) sayısal olmalıdır")
+
+                    # Handle dimension synonyms, e.g., diameter -> radius for circle-like shapes
+                    if shape_key in ("circle", "semi-circle"):
+                        if "radius" not in arguments:
+                            # Common alternates that might be supplied
+                            for dkey in ("diameter", "cap", "çap", "D"):
+                                if dkey in arguments:
+                                    try:
+                                        arguments["radius"] = float(arguments.pop(dkey)) / 2.0
+                                    except Exception:
+                                        # If conversion fails, let it fall through to missing param error below
+                                        pass
+                                    break
+                        else:
+                            # If user specified diameter in text but model wrongly set radius=diameter, fix it
+                            try:
+                                user_text = None
+                                for msg in reversed(messages_history):
+                                    if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+                                        user_text = msg["content"].lower()
+                                        break
+                                if user_text and ("çap" in user_text or "diameter" in user_text or "cap" in user_text):
+                                    import re as _re
+                                    m = _re.search(r"(çap|diameter|cap)\D*(\d+(?:[\.,]\d+)?)", user_text)
+                                    if m:
+                                        dia_val = float(m.group(2).replace(',', '.'))
+                                        rad_val = float(arguments.get("radius"))
+                                        # If radius equals diameter (within tolerance), correct it
+                                        if abs(rad_val - dia_val) < 1e-6:
+                                            arguments["radius"] = dia_val / 2.0
+                            except Exception:
+                                pass
+
+                    # Build ordered args expected by EngineeringCalculator
                     shape_dim_names = ec.get_shape_parameters(shape_key)
-                    shape_dims_values = [arguments[dim_name] for dim_name in shape_dim_names]
+                    try:
+                        shape_dims_values = [float(arguments[dim_name]) for dim_name in shape_dim_names]
+                    except KeyError as e:
+                        missing = str(e).strip("'")
+                        raise ValueError(f"'{missing}' parametresi eksik")
+
                     all_args_for_mass = shape_dims_values + [length]
                     mass_val = ec.calculate_material_mass(shape_key, density, *all_args_for_mass)
                     result_content = f"{mass_val:.2f} gram"
 
                 else:
-                    result_content = f"Bilinmeyen fonksiyon: {function_name_from_model}"
+                    # Unknown function: try a smart fallback for cylinder/circle volume-like calls
+                    fname = str(function_name_from_model).lower()
+                    fallback_done = False
+                    try:
+                        if any(k in fname for k in ("cylinder", "circle", "volume")):
+                            # Attempt to compute circle-based mass using provided arguments
+                            shape_key = "circle"
+                            # length/height mapping
+                            length_val = arguments.get("length") or arguments.get("height")
+                            if length_val is None:
+                                for len_key in ("L", "uzunluk", "boy", "length_mm"):
+                                    if len_key in arguments:
+                                        length_val = arguments.get(len_key)
+                                        break
+                            if length_val is None:
+                                # Infer from user text
+                                try:
+                                    user_text = None
+                                    for msg in reversed(messages_history):
+                                        if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+                                            user_text = msg["content"].lower()
+                                            break
+                                    if user_text:
+                                        import re as _re
+                                        m = _re.search(r"(boy|uzunluk|length)\D*(\d+(?:[\.,]\d+)?)", user_text)
+                                        if m:
+                                            length_val = float(m.group(2).replace(',', '.'))
+                                except Exception:
+                                    pass
+                            # radius/diameter mapping
+                            radius_val = arguments.get("radius")
+                            if radius_val is None:
+                                for dkey in ("diameter", "cap", "çap", "D"):
+                                    if dkey in arguments:
+                                        try:
+                                            radius_val = float(arguments.get(dkey)) / 2.0
+                                        except Exception:
+                                            pass
+                                        break
+                            else:
+                                # If user text mentions diameter and model used radius=diameter, correct it
+                                try:
+                                    user_text = None
+                                    for msg in reversed(messages_history):
+                                        if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+                                            user_text = msg["content"].lower()
+                                            break
+                                    if user_text and ("çap" in user_text or "diameter" in user_text or "cap" in user_text):
+                                        import re as _re
+                                        m = _re.search(r"(çap|diameter|cap)\D*(\d+(?:[\.,]\d+)?)", user_text)
+                                        if m:
+                                            dia_val = float(m.group(2).replace(',', '.'))
+                                            r_val = float(radius_val)
+                                            if abs(r_val - dia_val) < 1e-6:
+                                                radius_val = dia_val / 2.0
+                                except Exception:
+                                    pass
+                            # density: direct or by guessing from user text
+                            density_val = arguments.get("density")
+                            if density_val is None:
+                                mat_aliases2 = {
+                                    'çelik': 'Çelik', 'steel': 'Çelik',
+                                    'alüminyum': 'Alüminyum', 'aluminum': 'Alüminyum', 'aluminium': 'Alüminyum',
+                                    'bakır': 'Bakır', 'copper': 'Bakır',
+                                    'pirinç': 'Pirinç', 'brass': 'Pirinç',
+                                    'dökme demir': 'Dökme Demir', 'cast iron': 'Dökme Demir',
+                                    'plastik': 'Plastik', 'plastic': 'Plastik',
+                                    'titanyum': 'Titanyum', 'titanium': 'Titanyum',
+                                    'kurşun': 'Kurşun', 'lead': 'Kurşun',
+                                    'çinko': 'Çinko', 'zinc': 'Çinko',
+                                    'nikel': 'Nikel', 'nickel': 'Nikel',
+                                }
+                                user_text = None
+                                for msg in reversed(messages_history):
+                                    if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+                                        user_text = msg["content"]
+                                        break
+                                if user_text:
+                                    lower_text = user_text.lower()
+                                    guessed_mat = None
+                                    for alias, canonical in mat_aliases2.items():
+                                        if alias in lower_text:
+                                            guessed_mat = canonical
+                                            break
+                                    if guessed_mat:
+                                        density_val = ec.get_material_density(guessed_mat)
+                            if radius_val is not None and length_val is not None and density_val is not None:
+                                mass_val = ec.calculate_material_mass(shape_key, float(density_val), float(radius_val), float(length_val))
+                                result_content = f"{mass_val:.2f} gram"
+                                fallback_done = True
+                    except Exception:
+                        fallback_done = False
+                    if not fallback_done:
+                        result_content = f"Bilinmeyen fonksiyon: {function_name_from_model}"
 
                 self.add_to_workspace("Tool Sonucu", f"Fonksiyon: {function_name_from_model}, Sonuç: {result_content}")
                 tool_results.append({
+                    "tool_call_id": tool_call_id,
+                    "role": "tool",
+                    "content": result_content
+                })
+                # Append to structured history as well
+                self.history.append({
                     "tool_call_id": tool_call_id,
                     "role": "tool",
                     "content": result_content
@@ -648,12 +1062,18 @@ Tools: {[t['function']['name'] for t in tools]}""")
         payload_after_tool_call = {
             "model": model_name,
             "messages": messages_for_next_turn,
-            "stream": False
+            "stream": False,
+            "tools": tools_definition,
+            "options": {
+                "temperature": 0.2,
+                "top_p": 0.9
+            }
         }
 
         self.add_to_workspace("Sistem", "Tool sonuçları modele gönderiliyor...")
         try:
-            response = requests.post(model_url, json=payload_after_tool_call, headers={"Content-Type": "application/json"})
+            chat_url = self._normalize_chat_url(model_url)
+            response = requests.post(chat_url, json=payload_after_tool_call, headers={"Content-Type": "application/json"}, timeout=60)
             response.raise_for_status()
             final_response_data = response.json()
 
@@ -661,7 +1081,27 @@ Tools: {[t['function']['name'] for t in tools]}""")
 
             final_content = final_response_data.get("message", {}).get("content", "Modelden nihai cevap alınamadı.")
             self.add_to_workspace("Model", final_content)
+            # Append final assistant content to history
+            self.history.append({"role": "assistant", "content": final_content})
 
+        except requests.exceptions.ReadTimeout as e:
+            # Retry once with same payload (tool results are deterministic)
+            self.add_to_workspace("Sistem Uyarısı", "Tool sonrası istek zaman aşımı; tek seferlik yeniden deneme yapılıyor...")
+            try:
+                chat_url = self._normalize_chat_url(model_url)
+                response = requests.post(chat_url, json=payload_after_tool_call, headers={"Content-Type": "application/json"}, timeout=60)
+                response.raise_for_status()
+                final_response_data = response.json()
+
+                self.add_to_workspace("Model Ham Cevap (Tool Sonrası)", json.dumps(final_response_data, indent=2, ensure_ascii=False))
+
+                final_content = final_response_data.get("message", {}).get("content", "Modelden nihai cevap alınamadı.")
+                self.add_to_workspace("Model", final_content)
+                self.history.append({"role": "assistant", "content": final_content})
+            except Exception as e2:
+                error_msg = f"Tool sonrası yeniden deneme başarısız: {e2}"
+                self.add_to_workspace("Sistem Hatası", error_msg)
+                messagebox.showerror("API Hatası", error_msg)
         except requests.exceptions.RequestException as e:
             error_msg = f"Tool sonrası API isteği başarısız: {e}"
             self.add_to_workspace("Sistem Hatası", error_msg)
@@ -670,6 +1110,26 @@ Tools: {[t['function']['name'] for t in tools]}""")
             error_msg = f"Tool sonrası beklemedik hata: {e}"
             self.add_to_workspace("Sistem Hatası", error_msg)
             messagebox.showerror("Genel Hata", error_msg)
+
+    def on_model_change(self, event=None):
+        """Called when the user selects a different model. Flags history reset for next prompt."""
+        try:
+            new_model = self.model_selection_combo.get()
+        except Exception:
+            new_model = None
+        self.reset_history_next_prompt = True
+        if new_model:
+            self.add_to_workspace("Sistem", f"Model değiştirildi: {new_model}. Bir sonraki istek yeni oturum olarak gönderilecek.")
+
+    def on_model_url_change(self, event=None):
+        """Called when the model URL field changes. Flags history reset for next prompt if URL differs."""
+        try:
+            new_url = self._normalize_chat_url(self.model_url_entry.get())
+        except Exception:
+            new_url = None
+        if new_url and new_url != self.current_chat_url:
+            self.reset_history_next_prompt = True
+            self.add_to_workspace("Sistem", f"Model URL değişti: {new_url}. Bir sonraki istek yeni oturum olarak gönderilecek.")
 
 
     def add_to_workspace(self, source: str, message: str):
