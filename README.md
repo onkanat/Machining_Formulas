@@ -89,18 +89,23 @@ Bu uygulama artık mühendislik hesaplamaları için konuşma tabanlı bir aray�
 - **Doğal Dil Sorguları:** "Mil hızı 1000 rpm ve çap 50 mm ise kesme hızı nedir?" gibi hesaplamalar isteyin.
 - **Araç Çağırma (Tool-Calling):** Yapay zeka, doğru hesaplamaları yapmak için yerleşik hesaplama fonksiyonlarını araç olarak kullanır.
 - **Dinamik Arayüz:** Kullanıcı arayüzü, her hesaplama türü için gerekli parametreleri gösterecek şekilde dinamik olarak güncellenir.
+- **Dosya Ekleri:** `.txt`, `.md`, `.py`, `.c` ve `.cpp` dosyalarını "Dosya Ekle" butonu ile prompt alanına aktarabilir, daha uzun sorguları kolayca yapabilirsiniz.
 
 ### Kurulum ve Kullanım
 
 1. **Bağımlılıkları Yükleyin:** Python'un kurulu olduğundan emin olun. Ardından, `requirements.txt` dosyasındaki gerekli paketleri yükleyin:
-    ```bash
-    pip install -r requirements.txt
-    ```
-2. **Ollama'yı Çalıştırın:** Ollama sunucunuzun çalıştığından ve istediğiniz modelin (ör. `llama3.1`) kullanılabilir olduğundan emin olun. Uygulama varsayılan olarak `http://localhost:11434/api/chat` uç noktasını kullanır ve model listesini `http://localhost:11434/api/tags` üzerinden dinamik olarak çeker.
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Ollama'yı Çalıştırın:** Ollama sunucunuzun çalıştığından ve istediğiniz modelin (ör. `llama3.1`) kullanılabilir olduğundan emin olun. Uygulama varsayılan olarak `http://localhost:11434/v1/chat` uç noktasını kullanır ve model listesini `http://localhost:11434/v1/tags` üzerinden dinamik olarak çeker.
 3. **Uygulamayı Çalıştırın:**
-    ```bash
-    python horz_gui.py
-    ```
+
+   ```bash
+   python horz_gui.py
+   ```
+
 4. **AI ile Etkileşim:**
     - Manuel hesaplamalar için açılır menüden bir hesaplama türü seçin.
     - Veya sorunuzu doğrudan sohbet giriş alanına yazın ve "Ollama'ya Gönder" düğmesine basın. AI ya metinle yanıt verecek ya da bir hesaplama yapıp sonucu gösterecektir.

@@ -30,5 +30,7 @@
   "HesaplamaTuru": "Bir hesaplama türü seçin.",
   "HesaplamaSecimi": "Bir hesaplama seçin.",
   "HesaplaButonu": "Seçili hesaplamayı gerçekleştir.",
+  "GonderButonu": "Soruyu modele gönder.",
+  "DosyaEkleButonu": "Desteklenen dosyaları prompt alanına ekleyin.",
   "MalzemeSec": "Bir malzeme seçerek yoğunluğu otomatik doldurun."
 }

@@ -1,5 +1,11 @@
+#! .venv/bin/python
+# -*- coding : utf-8 -*-# # Standard Python encoding declaration.
+# Autor:Hakan KILIÇASLAN 2025 # Author and year.
+# flake8: noqa
+
 import math
 from typing import Any, Dict, List, Union, Callable
+
 
 class EngineeringCalculator:
     def __init__(self):

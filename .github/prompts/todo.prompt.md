@@ -4,10 +4,10 @@ Bu dosya, proje için önceliklendirilmiş görevler, kabul kriterleri ve yardı
 
 Geliştirici Promptu
 - Rol: Kıdemli Python geliştiricisi ve masaüstü/LLM entegrasyonu uzmanı.
-- Kaynaklar: [`EngineeringCalculator`](engineering_calculator.py), [`AdvancedCalculator`](horz_gui.py), [README](README.md), [tooltips.json](tooltips.json).
+- Kaynaklar: [`EngineeringCalculator`](engineering_calculator.py), [`AdvancedCalculator`](horz_gui.py), [`ollama_utils`](ollama_utils.py), [`material_utils`](material_utils.py), [`execute_mode`](execute_mode.py), [README](README.md), [tooltips.json](tooltips.json).
 - Kısıtlar:
   - Birim tutarlılığı (mm, cm³, m/min, rpm).
-  - Mevcut API: Ollama `/api/chat`, araç tanımları `_get_calculator_tools_definition`, `handle_tool_calls` ile yürütme.
+  - Ollama entegrasyonu `ollama_utils` yardımcılarıyla yönetilir; varsayılan chat endpoint’i `http://localhost:11434/v1/chat`, `/api/chat` yedeği mevcut.
   - Kod örnekleri dört backtick + `// filepath:` ile gelsin.
   - TR mesajları ve GUI etiketleri korunur.
 - Çıktı: Her görev için
@@ -19,41 +19,45 @@ Geliştirici Promptu
 
 P0 (Kritik)
 1) Model URL ve README tutarlılığı
-- Sorun: GUI varsayılanı IP ve `/api/chat` arasında tutarsız; README `http://localhost:11434` diyor.
+- Sorun: Varsayılan `http://localhost:11434/v1/chat` yönergeleri ve README henüz tam eşitlenmedi.
 - Adımlar:
-  - `horz_gui.py` içinde tek bir varsayılan belirle: `http://localhost:11434/api/chat`
-  - README’yi buna göre güncelle.
-  - Hata/timeout mesajlarını kullanıcı-dostu hale getir (örn. bağlantı başarısız ipucu).
+  - README’deki kurulum ve ekran görüntüsü açıklamalarını `v1/chat` değerine göre güncelle.
+  - `Model URL` giriş alanı ipucu ve hata/timeout mesajlarında kullanıcıya bağlantı önerileri (örn. Ollama ayakta mı?) ekle.
+  - Manual QA: GUI’den varsayılan değerle başarılı istek atılabildiğini doğrula.
 - Kabul:
-  - Varsayılan alanlar aynı
-  - README talimatı birebir çalışıyor
-- İlgili: [`AdvancedCalculator.__init__`](horz_gui.py), [README.md](README.md)
+  - Varsayılan URL tüm belgelerde aynı.
+  - Kullanıcı hata mesajında nasıl düzelteceğini anlıyor.
+- İlgili: [`AdvancedCalculator.__init__`](horz_gui.py), [`AdvancedCalculator._handle_request_error`](horz_gui.py), [README.md](README.md)
 
-2) Ollama model listesini dinamik çek
+2) Model listesi ve URL yardımcılarının test edilmesi
 - Adımlar:
-  - `/api/tags` çağrısı ile model adlarını topla, `Combobox`’a yükle.
-  - Hata halinde mevcut sabit listeye geri dön.
+  - `ollama_utils` fonksiyonları için ünite testleri yaz (`normalize_chat_url`, `candidate_chat_urls`, `candidate_tags_urls`).
+  - `refresh_model_list` çağrısı için başarısız HTTP senaryosunu taklit eden test ekle.
+  - Başarılı ve başarısız durumlarda Combobox içeriğini doğrula.
 - Kabul:
-  - Ağ varsa liste doluyor; yoksa graceful fallback
-- Test:
-  - Başarılı/başarısız HTTP yanıtlarda davranış
-- İlgili: [`AdvancedCalculator.__init__`](horz_gui.py), [`requests`](horz_gui.py)
+  - Testler hem `/v1` hem `/api` senaryolarını kapsıyor.
+  - Hata durumunda fallback listesi atanıyor.
+- İlgili: [`ollama_utils.py`](ollama_utils.py), [`AdvancedCalculator.refresh_model_list`](horz_gui.py), [`tests/`](tests)
 
-3) Ağ çağrılarında timeout ve sağlam hata işleme
+3) Ağ çağrılarında timeout ve kullanıcı dostu hata işleme
 - Adımlar:
-  - `requests.post(..., timeout=20)` kullan
-  - `RequestException`’da kullanıcıya kısa TR mesaj, loga teknik detay
+  - `call_ollama_api` ve `handle_tool_calls` içinde timeout’u `20s` olarak sabitle, status bar mesajlarını güncelle.
+  - `requests.exceptions.RequestException` ve JSON parse hataları için Türkçe kısa mesaj + log detayı ekle.
+  - Manuel test: Sunucu kapalıyken GUI donmadan toparlanıyor.
 - Kabul:
-  - Sunucu yoksa uygulama donmuyor
+  - Timeout sonrası tek seferlik yeniden deneme çalışıyor veya kullanıcıya net uyarı veriliyor.
+  - Loglar teknik ayrıntıyı, GUI ise sade mesajı içeriyor.
 - İlgili: [`AdvancedCalculator.call_ollama_api`](horz_gui.py), [`AdvancedCalculator.handle_tool_calls`](horz_gui.py)
 
-4) Tool-calling döngüsü için kalıcı ve temiz geçmiş modellemesi
+4) Tool-calling döngüsü için çok turlu regresyonlar
 - Adımlar:
-  - `get_conversation_history` sade metin yerine yapılandırılmış bir liste/alan tutsun (örn. sınıf üyesi `self.history`)
-  - Tool sonuçları `role=tool` olarak eklenmeli
+  - `tests/test_handle_tool_calls.py` gezinmesini genişlet: art arda iki tool çağrısı ve fallback senaryosu.
+  - `material_utils.prepare_material_mass_arguments` için edge-case testleri (eksik uzunluk, çap metin eşlemesi) ekle.
+  - `self.history` içine role=tool kayıtlarının sırasını doğrula.
 - Kabul:
-  - En az 2 tur tool-calling ardışık çalışıp doğru yanıta ulaşıyor
-- İlgili: [`AdvancedCalculator.get_conversation_history`](horz_gui.py), [`AdvancedCalculator.handle_tool_calls`](horz_gui.py)
+  - Başarılı + başarısız tool çağrıları doğru sayıda history girdisi üretiyor.
+  - fallback kütle hesabı doğru birimlerde sonuç dönüyor.
+- İlgili: [`AdvancedCalculator.handle_tool_calls`](horz_gui.py), [`material_utils.py`](material_utils.py), [`tests/test_handle_tool_calls.py`](tests/test_handle_tool_calls.py)
 
 P1 (Önemli)
 5) Şekil formüllerinin doğrulanması ve parametre isimlendirmesi
@@ -75,19 +79,20 @@ P1 (Önemli)
 
 7) `execute_mode` güvenliği ve UX
 - Adımlar:
-  - “Açık uyarı” başlığı ve kısa rehber
-  - Uzun seçimlerde eval iptali; hatalarda güvenli kapanış
+  - ExecuteModeMixin’de uyarı metinlerini konsolide et; GUI’ye kısa rehber ekle.
+  - Çok satırlı seçimlerde 2 kB sınırı koy ve kullanıcıya uyarı göster.
 - Kabul:
-  - Hatalı kodda uygulama stabil, mod her zaman kapanıyor
-- İlgili: [`AdvancedCalculator.execute_calculation`](horz_gui.py)
+  - Hatalı kodda uygulama stabil, mod her zaman kapanıyor.
+  - Limit aşımında eval tetiklenmeden güvenli şekilde kapanıyor.
+- İlgili: [`execute_mode.py`](execute_mode.py), [`AdvancedCalculator.enable_execute_mode`](horz_gui.py)
 
 8) Tool parametre isimlerinin belirsizliklerini azaltma
 - Adımlar:
-  - Kütle hesabında şekil-özel parametrelere daha belirgin açıklama: `_get_calculator_tools_definition` açıklamalarını genişlet
-  - Gerekirse şekil-başı ayrı tool tanımları üret (isteğe bağlı)
+  - `ollama_utils.build_calculator_tools_definition` açıklamalarını, şekil-özel parametreler için Türkçe karşılıklarla zenginleştir.
+  - Material mass tool’u için örnek argüman seti ekle (docs ölçülü).
 - Kabul:
-  - Model yanlış parametre adı üretmiyor (manüel test)
-- İlgili: [`AdvancedCalculator._get_calculator_tools_definition`](horz_gui.py), [`EngineeringCalculator.get_shape_parameters`](engineering_calculator.py)
+  - Model yanlış parametre adı üretmiyor (manüel test).
+- İlgili: [`ollama_utils.py`](ollama_utils.py), [`EngineeringCalculator.get_shape_parameters`](engineering_calculator.py)
 
 P2 (İyileştirmeler)
 9) Akış (stream) desteği
@@ -119,11 +124,13 @@ VS Code Arama Sorguları
 - Trapezium incele:
   - `files to include: **/engineering_calculator.py` | `regex: trapezium`
 - Model URL tutarlılığı:
-  - `files to include: **/horz_gui.py` | `query: 11434`
+  - `files to include: **/horz_gui.py` | `query: v1/chat`
+  - `files to include: **/ollama_utils.py` | `query: DEFAULT_CHAT_URL`
   - `files to include: **/README.md` | `query: localhost:11434`
 - Tool-calling alanları:
   - `files to include: **/horz_gui.py` | `query: tool_calls`
-  - `files to include: **/horz_gui.py` | `query: _get_calculator_tools_definition`
+  - `files to include: **/horz_gui.py` | `query: _parse_tool_call`
+  - `files to include: **/ollama_utils.py` | `query: build_calculator_tools_definition`
 - Hata mesajları:
   - `files to include: **/*.py` | `query: messagebox.showerror`
 
@@ -138,4 +145,5 @@ Terminal Komutları (macOS)
 İlgili Dosyalar
 - Çekirdek: [`engineering_calculator.py`](engineering_calculator.py)
 - GUI/LLM: [`horz_gui.py`](horz_gui.py)
+- Yardımcılar: [`ollama_utils.py`](ollama_utils.py), [`material_utils.py`](material_utils.py), [`execute_mode.py`](execute_mode.py)
 - Dokümantasyon: [`README.md`](README.md), [`tooltips.json`](tooltips.json)

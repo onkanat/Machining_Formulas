@@ -13,8 +13,10 @@ def _build_calculator_stub():
     calc = AdvancedCalculator.__new__(AdvancedCalculator)
     calc.history = []
     calc.add_to_workspace = lambda *args, **kwargs: None
+    calc.update_status_bar = lambda *args, **kwargs: None
     calc._candidate_chat_urls = lambda url: [url]
     calc._debug_log_raw_response = lambda *args, **kwargs: None
+    calc.debug_show_raw_model_responses = False
     calc.force_legacy_chat = False
     calc.current_chat_url = None
     calc._last_tool_run_details = None

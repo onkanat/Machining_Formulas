@@ -3,7 +3,7 @@
 Amaç
 - Bu depo, imalat (tornalama/frezeleme) hesaplamaları ile malzeme kütlesi hesabını yapar ve Ollama tabanlı LLM ile konuşma/araç-çağırma (tool-calling) entegre çalışır.
 - Çekirdek hesaplama mantığı [`EngineeringCalculator`](engineering_calculator.py) sınıfındadır.
-- GUI ve LLM entegrasyonu [`AdvancedCalculator`](horz_gui.py) ile yönetilir.
+- GUI ve LLM entegrasyonu [`AdvancedCalculator`](horz_gui.py) ile yönetilir; Ollama ve yardımcı araç akışı artık ayrı yardımcı modüllerle modülerleştirilmiştir.
 
 Ana Modüller ve Semboller
 - Çekirdek hesaplayıcı: [`EngineeringCalculator`](engineering_calculator.py)
@@ -13,11 +13,14 @@ Ana Modüller ve Semboller
   - Parametre meta bilgisi: [`EngineeringCalculator.get_calculation_params`](engineering_calculator.py)
   - Şekil parametreleri: [`EngineeringCalculator.get_shape_parameters`](engineering_calculator.py)
   - Şekil adları: [`EngineeringCalculator.get_available_shapes`](engineering_calculator.py)
-- GUI + LLM:
+- GUI + LLM katmanı:
   - Başlatıcı/arayüz: [`AdvancedCalculator`](horz_gui.py)
-  - Tool şeması üretimi: [`AdvancedCalculator._get_calculator_tools_definition`](horz_gui.py)
+  - Execute modu mixin: [`ExecuteModeMixin`](execute_mode.py)
+  - Ollama URL yardımcıları ve tool şeması: [`ollama_utils`](ollama_utils.py)
+  - Tool çağrısı argüman normalizasyonu: [`material_utils`](material_utils.py)
+  - Tool şeması üretimi: [`AdvancedCalculator._get_calculator_tools_definition`](horz_gui.py) → `ollama_utils.build_calculator_tools_definition`
   - Ollama çağrısı: [`AdvancedCalculator.call_ollama_api`](horz_gui.py)
-  - Tool çağrısı işleme: [`AdvancedCalculator.handle_tool_calls`](horz_gui.py)
+  - Tool çağrısı işleme: [`AdvancedCalculator.handle_tool_calls`](horz_gui.py) (yardımcı metotlar: `_parse_tool_call`, `_execute_tool_call`, `_attempt_mass_fallback`)
 
 Genel Kurallar
 - Dilde süreklilik: Kullanıcı arayüzü ve mesajlar Türkçe. Kodda fonksiyon/parametre isimleri mevcut İngilizce anahtarlarla uyumlu tutulur.
@@ -50,13 +53,16 @@ LLM / Ollama Entegrasyonu
   - Frezeleme: `calculate_milling_{method_key}`
   - Kütle: `calculate_material_mass`
 - Argüman sıralaması ve isimleri, her zaman [`EngineeringCalculator.get_calculation_params`](engineering_calculator.py) ve [`EngineeringCalculator.get_shape_parameters`](engineering_calculator.py) çıktısına göre derlenir.
-- Model URL:
-  - GUI varsayılanı tek tip olmalı. `/api/chat` uç noktasını kullan.
-  - Listeyi dinamik çekmek için `/api/tags` kullanılabilir (iyileştirme).
+- Model URL ve etiketler:
+  - Varsayılan chat uç noktası `http://localhost:11434/v1/chat`; `ollama_utils.normalize_chat_url` ve `candidate_chat_urls` hem `/v1/chat` hem `/api/chat` için yedekler üretir.
+  - Model listesi `refresh_model_list` içinde `candidate_tags_urls` ile `/v1/tags`/`/api/tags` üzerinden dinamik çekilir; başarısızlıkta küçük statik listeye düşülür.
 - İsteklerde `requests` kullanırken timeout ver (ör. 20s) ve HTTP hatalarını yakala.
+- Konuşma geçmişi ve araç yanıtları `self.history` yapısal listesinde tutulur; her tool sonucu `role="tool"` objesi olarak eklenmelidir.
+- Malzeme kütlesi argümanları `material_utils.prepare_material_mass_arguments` ile normalize edilir; yeni şekil parametreleri eklenirken bu yardımcıyı güncelleyin ve fallback senaryolarını (`_attempt_mass_fallback`) gözden geçirin.
 
 Güvenlik ve Gizlilik
-- `execute_mode` içinde `eval` kullanılmaktadır. Varsayılan kapalıdır, etkileşim sonrası otomatik kapanır. Bu modu değiştiren PR’lar ek güvenlik notları ve testler içermelidir.
+- `ExecuteModeMixin` (`execute_mode.py`) eval tabanlı işlevi kapsüller; karışık sınıfa müdahale ederken mixin’i genişletin ve `_get_exec_mode_calculator` sağlandığından emin olun.
+  - `eval` erişimi sadece seçili metne izin verir; güvenlik değişikliklerinde açık uyarı metinlerini güncelleyin ve pytest ile senaryoları doğrulayın.
 - API anahtarları veya gizli bilgiler kayda yazılmaz.
 
 Test ve Doğrulama
@@ -64,6 +70,7 @@ Test ve Doğrulama
   - Şekil hacimleri (ör: üçgen/dikdörtgen/dairenin bilinen sonuçları)
   - Tornalama/frezeleme örnek değerleri (README örnekleri)
   - Parametre meta bilgisi (beklenen anahtarlar/sıra)
+- `tests/test_handle_tool_calls.py` sahte `AdvancedCalculator` örneklerini oluştururken `debug_show_raw_model_responses` ve yeni yardımcı metodların gerektirdiği alanlar set edilmelidir.
 - Kenar durumları: Hatalı şekil, eksik parametre, tip hatası, 0/bölme vb.
 
 Değişiklik Önerisi Nasıl Sunulur
