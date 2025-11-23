@@ -1,0 +1,39 @@
+# Machining Formulas V2 Requirements
+# This file includes all dependencies needed for V2 single-page workspace system
+
+# Core HTTP client for Ollama API communication
+requests>=2.25.0
+
+# Markdown parsing for tooltips and documentation
+markdown>=3.3.0
+
+# Testing framework
+pytest>=7.0.0
+
+# Data classes and type hints support (Python 3.10+)
+# dataclasses  # Built-in from Python 3.7+
+
+# Enhanced JSON handling for workspace export/import
+# jsonschema>=4.0.0  # Optional: For validation
+
+# Better datetime handling for timestamps
+# python-dateutil>=2.8.0  # Optional: For enhanced date features
+
+# GUI Framework
+# tkinter  # Usually comes with Python, install if missing:
+# pip install tk  # or on Ubuntu/Debian: sudo apt-get install python3-tk
+
+# Development and Testing Tools (uncomment for development)
+# pytest-cov>=4.0.0      # Test coverage reporting
+# black>=22.0.0              # Code formatting
+# flake8>=5.0.0              # Code linting
+# mypy>=1.0.0                 # Static type checking
+# pre-commit>=2.20.0          # Git hooks
+
+# Optional: Performance monitoring
+# memory-profiler>=0.60.0    # For memory usage analysis
+# line-profiler>=4.0.0       # For performance profiling
+
+# Optional: Enhanced logging
+# colorlog>=6.7.0            # Colored logging output
+# rich>=13.0.0               # Rich console output

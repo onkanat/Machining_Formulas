@@ -129,21 +129,38 @@ V2, hesaplama ve model etkileşimini tamamen yeniden tasarlar. Artık chat geçm
 #### V1 (Orijinal Chat Sistemi)
 ```bash
 # V1 - Chat tabanlı sistem
+pip install -r requirements.txt
 python horz_gui.py
 ```
 
 #### V2 (Yeni Tek Sayfa Sistemi)  
 ```bash
 # V2 - Tek sayfa çalışma alanı
+pip install -r requirements_v2.txt
 python v2_gui.py
 ```
 
 ### 📦 Bağımlılıklar
 
-Her iki sistem için de aynı bağımlılıklar geçerlidir:
+#### V1 İçin:
 ```bash
 pip install -r requirements.txt
 ```
+
+#### V2 İçin (Tavsiye Edilen):
+```bash
+pip install -r requirements_v2.txt
+```
+
+#### Temel Bağımlılıklar (Her İki Sistem İçin):
+- `requests>=2.25.0` - Ollama API iletişimi
+- `markdown>=3.3.0` - Dokümantasyon ve tooltips
+- `pytest>=7.0.0` - Test framework
+- `tkinter` - GUI framework (genellikle Python ile birlikte gelir)
+
+#### Not: 
+- Eğer tkinter kurulu değilse: `pip install tk` (Ubuntu/Debian için: `sudo apt-get install python3-tk`)
+- Geliştirme için ek bağımlılıklar `requirements_v2.txt` içinde yorum satırı olarak mevcuttur
 
 2. **Ollama'yı Çalıştırın:** Ollama sunucunuzun çalıştığından ve istediğiniz modelin (ör. `llama3.1`) kullanılabilir olduğundan emin olun. Uygulama varsayılan olarak `http://localhost:11434/v1/chat` uç noktasını kullanır ve model listesini `http://localhost:11434/v1/tags` üzerinden dinamik olarak çeker.
 3. **Uygulamayı Çalıştırın:**

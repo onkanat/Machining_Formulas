@@ -1,3 +1,21 @@
-requests
-markdown
-pytest
+# Core dependencies
+requests>=2.25.0
+markdown>=3.3.0
+
+# GUI framework (tkinter comes with Python, but some systems may need it)
+# tkinter  # Uncomment if tkinter is not installed by default
+
+# Testing framework
+pytest>=7.0.0
+
+# Optional: For better JSON handling and data validation
+# jsonschema>=4.0.0  # Uncomment for enhanced validation
+
+# Optional: For better datetime handling
+# python-dateutil>=2.8.0  # Uncomment for enhanced date features
+
+# Development dependencies (uncomment for development)
+# pytest-cov>=4.0.0  # For test coverage
+# black>=22.0.0        # For code formatting
+# flake8>=5.0.0        # For linting
+# mypy>=1.0.0           # For type checking
