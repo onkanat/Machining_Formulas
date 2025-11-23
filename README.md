@@ -1,4 +1,4 @@
-# General Turning Formulas and Definitions  
+# Machining Formulas - V2 Single Page Workspace System  
 
 When machining in lathes, turning centers, or multi-task machines, calculating the correct values for different machining parameters like cutting speed and spindle speed is a crucial factor for good results. In this section, you will find the formulas and definitions needed for general turning.
 
@@ -80,24 +80,70 @@ Here you will find a collection of good to have milling formulas and definitions
 |DC |Cutting diameter |mm |inch|  
 |LU |Usable length |mm |inch|
 
-## AI Destekli Hesaplamalar (Ollama Entegrasyonu)
+## 🚀 V2 - Tek Sayfa Çalışma Alanı Sistemi
 
-Bu uygulama artık mühendislik hesaplamaları için konuşma tabanlı bir arayüz sağlamak üzere Ollama büyük dil modeli ile entegre çalışmaktadır. Hesaplamaları düz metin olarak isteyebilirsiniz ve asistan size cevabı bulmak için araçlarını kullanacaktır.
+V2, hesaplama ve model etkileşimini tamamen yeniden tasarlar. Artık chat geçmişi yerine tek sayfa üzerinde hesaplama, not alma ve model analizi döngüsü bulunur.
 
-### Özellikler
+### ✨ V2 Özellikleri
 
-- **Doğal Dil Sorguları:** "Mil hızı 1000 rpm ve çap 50 mm ise kesme hızı nedir?" gibi hesaplamalar isteyin.
-- **Araç Çağırma (Tool-Calling):** Yapay zeka, doğru hesaplamaları yapmak için yerleşik hesaplama fonksiyonlarını araç olarak kullanır.
-- **Dinamik Arayüz:** Kullanıcı arayüzü, her hesaplama türü için gerekli parametreleri gösterecek şekilde dinamik olarak güncellenir.
-- **Dosya Ekleri:** `.txt`, `.md`, `.py`, `.c` ve `.cpp` dosyalarını "Dosya Ekle" butonu ile prompt alanına aktarabilir, daha uzun sorguları kolayca yapabilirsiniz.
+- **🔧 Tek Sayfa Çalışma Alanı:** Tüm hesaplamalar, notlar ve model yorumları tek sayfada görüntülenir
+- **📝 Not Alma Sistemi:** Her hesaplamaya kullanıcı notları eklenebilir
+- **🤖 Akıllı Model Analizi:** Model tüm çalışma alanını görerek detaylı analiz yapar
+- **💾 Oturum Yönetimi:** Çalışma alanı dışa/içe aktarılabilir
+- **🔄 History'siz Etkileşim:** Her istek bağımsız, bağlam tabanlı çalışır
+- **🎛️ Gelişmiş Kontrol Paneli:** Karşılaştırma ve genel analiz araçları
 
-### Kurulum ve Kullanım
+### 📋 Kullanım Akışı
 
-1. **Bağımlılıkları Yükleyin:** Python'un kurulu olduğundan emin olun. Ardından, `requirements.txt` dosyasındaki gerekli paketleri yükleyin:
+1. **Hesaplama Yap:** Sol panelden hesaplama türünü seç ve parametreleri gir
+2. **Sonuçları Gör:** Hesaplama sonuçları çalışma alanına kart olarak eklenir
+3. **Not Ekle:** Her hesaplamaya notlar ekle (isteğe bağlı)
+4. **Model Analizi İste:** Tek hesaplama veya genel çalışma alanı için modelden analiz iste
+5. **Döngüyü Devam Et:** Yeni hesaplamalar ekle, mevcutları güncelle
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 🖥️ Arayüz Yapısı
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  HESAPLAMA PANELİ  │  ÇALIŞMA ALANI (V2)        │
+│ ┌─────────────────┐ │ ┌─────────────────────────────────┐ │
+│ │Hesaplama Türü[▼]│ │ │ 🔷 HESAPLAMA #1 - Kesme Hızı │ │
+│ │Hesaplama   [▼]│ │ │ ┌─────────────────────────────┐ │ │
+│ │ ┌─────────────────┐ │ │ │ │ Çap: 50mm, Devir: 1000rpm │ │ │
+│ │ │Dm: [______] mm │ │ │ │ │ Sonuç: 157.1 m/min        │ │ │
+│ │ │ n: [______] rpm│ │ │ │ └─────────────────────────────┘ │ │
+│ │ └─────────────────┘ │ │ │ 👤 Kullanıcı Notu:              │ │ │
+│ │ [🔷 HESAPLA]    │ │ │ │ "Bu değer yüksek görünüyor"   │ │ │
+│ │ [🗑️ TEMİZLE]    │ │ │ │ 🤖 Model Yorumu:              │ │ │
+│ └─────────────────┘ │ │ │ │ "Değerler doğru, kesme hızı │ │ │
+│                     │ │ │ │ uygun"                        │ │ │
+│ ┌─────────────────┐ │ │ └─────────────────────────────────┘ │ │
+│ │Model: [llama3.2▼]│ │ │                                 │ │
+│ │URL:  [localhost] │ │ │ [🔍 Analiz İste] [💾 Dışa Aktar] │ │
+│ └─────────────────┘ │ │ └─────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 🛠️ Kurulum ve Çalıştırma
+
+#### V1 (Orijinal Chat Sistemi)
+```bash
+# V1 - Chat tabanlı sistem
+python horz_gui.py
+```
+
+#### V2 (Yeni Tek Sayfa Sistemi)  
+```bash
+# V2 - Tek sayfa çalışma alanı
+python v2_gui.py
+```
+
+### 📦 Bağımlılıklar
+
+Her iki sistem için de aynı bağımlılıklar geçerlidir:
+```bash
+pip install -r requirements.txt
+```
 
 2. **Ollama'yı Çalıştırın:** Ollama sunucunuzun çalıştığından ve istediğiniz modelin (ör. `llama3.1`) kullanılabilir olduğundan emin olun. Uygulama varsayılan olarak `http://localhost:11434/v1/chat` uç noktasını kullanır ve model listesini `http://localhost:11434/v1/tags` üzerinden dinamik olarak çeker.
 3. **Uygulamayı Çalıştırın:**
