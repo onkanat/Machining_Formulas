@@ -15,7 +15,7 @@ from engineering_calculator import EngineeringCalculator
 
 
 # Default URLs for V2
-_DEFAULT_CHAT_URL = "http://localhost:11434/v1/chat"
+_DEFAULT_CHAT_URL = "http://localhost:11434/api/chat"
 _DEFAULT_GENERATE_URL = "http://localhost:11434/api/generate"
 
 

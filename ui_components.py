@@ -1,6 +1,6 @@
 """V2 UI components for single-page workspace interface.
 
-This module provides the UI components for V2 system including
+This module provides UI components for V2 system including
 workspace display, calculation cards, and interaction elements.
 """
 
@@ -58,9 +58,7 @@ class AdvancedToolTip:
         if self.tooltip or not self.text:
             return
 
-        x, y, _, _ = (
-            self.widget.bbox("insert") if hasattr(self.widget, "bbox") else (0, 0, 0, 0)
-        )
+        x, y, _, _ = self.widget.bbox("insert")
         x += self.widget.winfo_rootx() + 25
         y += self.widget.winfo_rooty() + 25
 
@@ -98,6 +96,7 @@ class CalculationCard(ttk.Frame):
         on_add_note: Optional[Callable[[str], None]] = None,
         on_request_analysis: Optional[Callable[[], None]] = None,
         on_remove: Optional[Callable[[], None]] = None,
+        on_edit_calculation: Optional[Callable[[str, CalculationEntry], None]] = None,
         tooltips: Optional[Dict[str, str]] = None,
     ):
         super().__init__(parent, style="Calc.TFrame")
@@ -106,13 +105,14 @@ class CalculationCard(ttk.Frame):
         self.on_add_note = on_add_note
         self.on_request_analysis = on_request_analysis
         self.on_remove = on_remove
+        self.on_edit_calculation = on_edit_calculation
         self.tooltips = tooltips or {}
 
         self.setup_ui()
         self.update_display()
 
     def setup_ui(self):
-        """Setup the card UI structure."""
+        """Setup card UI structure."""
         # Header with calculation info
         header_frame = ttk.Frame(self, style="Calc.TFrame")
         header_frame.pack(fill="x", padx=5, pady=(5, 0))
@@ -210,6 +210,13 @@ class CalculationCard(ttk.Frame):
             add_note_btn.pack(side="left", padx=(0, 5))
             AdvancedToolTip(add_note_btn, "Bu hesaplamaya not ekle")
 
+        # Edit calculation button
+        edit_btn = ttk.Button(
+            actions_frame, text="✏️ Düzenle", command=self.show_edit_dialog
+        )
+        edit_btn.pack(side="left", padx=(0, 5))
+        AdvancedToolTip(edit_btn, "Bu hesaplamayı düzenle")
+
         # Request analysis button
         if self.on_request_analysis:
             analysis_btn = ttk.Button(
@@ -223,8 +230,8 @@ class CalculationCard(ttk.Frame):
         separator.pack(fill="x", padx=5, pady=5)
 
     def update_display(self):
-        """Update the card display with current calculation data."""
-        # Clear and recreate the display
+        """Update card display with current calculation data."""
+        # Clear and recreate display
         for widget in self.winfo_children():
             widget.destroy()
         self.setup_ui()
@@ -266,6 +273,112 @@ class CalculationCard(ttk.Frame):
         dialog.bind("<Return>", lambda e: save_note())
         dialog.bind("<Escape>", lambda e: dialog.destroy())
 
+    def show_edit_dialog(self):
+        """Show dialog to edit calculation."""
+        if not hasattr(self, "calculation") or not self.calculation:
+            return
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Hesaplama Düzenle")
+        dialog.geometry("500x400")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        # Label
+        label = ttk.Label(dialog, text="Hesaplama parametrelerini düzenle:")
+        label.pack(pady=10)
+
+        # Create edit fields for each parameter
+        edit_frame = ttk.Frame(dialog)
+        edit_frame.pack(padx=10, pady=5, fill="both", expand=True)
+
+        edit_fields = {}
+
+        # Edit calculation type and name (read-only)
+        ttk.Label(edit_frame, text="Tür:", font=("Arial", 9, "bold")).grid(
+            row=0, column=0, sticky="w", pady=2
+        )
+        type_label = ttk.Label(edit_frame, text=self.calculation.calc_type)
+        type_label.grid(row=0, column=1, sticky="w", padx=(10, 0))
+
+        ttk.Label(edit_frame, text="İşlem:", font=("Arial", 9, "bold")).grid(
+            row=1, column=0, sticky="w", pady=2
+        )
+        name_label = ttk.Label(edit_frame, text=self.calculation.calculation_name)
+        name_label.grid(row=1, column=1, sticky="w", padx=(10, 0))
+
+        # Edit parameters
+        row = 2
+        for param_name, param_value in self.calculation.parameters.items():
+            ttk.Label(edit_frame, text=f"{param_name}:", font=("Arial", 9)).grid(
+                row=row, column=0, sticky="w", pady=2
+            )
+            entry = ttk.Entry(edit_frame, width=20)
+            entry.insert(0, str(param_value))
+            entry.grid(row=row, column=1, sticky="w", padx=(10, 0))
+            edit_fields[param_name] = entry
+            row += 1
+
+        # Edit result
+        ttk.Label(edit_frame, text="Sonuç:", font=("Arial", 9, "bold")).grid(
+            row=row, column=0, sticky="w", pady=2
+        )
+        result_entry = ttk.Entry(edit_frame, width=20)
+        result_entry.insert(0, str(self.calculation.result))
+        result_entry.grid(row=row, column=1, sticky="w", padx=(10, 0))
+        row += 1
+
+        # Edit unit
+        ttk.Label(edit_frame, text="Birim:", font=("Arial", 9, "bold")).grid(
+            row=row, column=0, sticky="w", pady=2
+        )
+        unit_entry = ttk.Entry(edit_frame, width=20)
+        unit_entry.insert(0, self.calculation.unit)
+        unit_entry.grid(row=row, column=1, sticky="w", padx=(10, 0))
+
+        # Buttons
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+
+        def save_changes():
+            try:
+                # Update parameters
+                for param_name, entry in edit_fields.items():
+                    new_value = entry.get()
+                    if new_value:
+                        if param_name != "Şekil":
+                            self.calculation.parameters[param_name] = float(new_value)
+                        else:
+                            self.calculation.parameters[param_name] = new_value
+
+                # Update result and unit
+                new_result = result_entry.get()
+                if new_result:
+                    self.calculation.result = float(new_result)
+
+                new_unit = unit_entry.get()
+                if new_unit:
+                    self.calculation.unit = new_unit
+
+                # Notify parent of changes
+                if self.on_edit_calculation:
+                    self.on_edit_calculation(self.calculation.id, self.calculation)
+
+                dialog.destroy()
+
+            except Exception as e:
+                messagebox.showerror("Hata", f"Değişiklikler kaydedilemedi: {str(e)}")
+
+        save_btn = ttk.Button(button_frame, text="Kaydet", command=save_changes)
+        save_btn.pack(side="left", padx=5)
+
+        cancel_btn = ttk.Button(button_frame, text="İptal", command=dialog.destroy)
+        cancel_btn.pack(side="left", padx=5)
+
+        # Bind Enter key to save
+        dialog.bind("<Return>", lambda e: save_changes())
+        dialog.bind("<Escape>", lambda e: dialog.destroy())
+
 
 class WorkspaceDisplay(ttk.Frame):
     """Main workspace display component."""
@@ -276,6 +389,7 @@ class WorkspaceDisplay(ttk.Frame):
         on_add_note: Optional[Callable[[str, str], None]] = None,
         on_request_analysis: Optional[Callable[[Optional[str]], None]] = None,
         on_remove_calculation: Optional[Callable[[str], None]] = None,
+        on_edit_calculation: Optional[Callable[[str, CalculationEntry], None]] = None,
         tooltips: Optional[Dict[str, str]] = None,
     ):
         super().__init__(parent, style="Calc.TFrame")
@@ -283,6 +397,7 @@ class WorkspaceDisplay(ttk.Frame):
         self.on_add_note = on_add_note
         self.on_request_analysis = on_request_analysis
         self.on_remove_calculation = on_remove_calculation
+        self.on_edit_calculation = on_edit_calculation
         self.tooltips = tooltips or {}
 
         self.calculation_cards: Dict[str, CalculationCard] = {}
@@ -290,7 +405,7 @@ class WorkspaceDisplay(ttk.Frame):
         self.setup_ui()
 
     def setup_ui(self):
-        """Setup the workspace display UI."""
+        """Setup workspace display UI."""
         # Header
         header_frame = ttk.Frame(self, style="Calc.TFrame")
         header_frame.pack(fill="x", padx=5, pady=5)
@@ -345,7 +460,7 @@ class WorkspaceDisplay(ttk.Frame):
         self.empty_label.pack(expand=True, pady=50)
 
     def add_calculation_card(self, calculation: CalculationEntry):
-        """Add a new calculation card to the workspace."""
+        """Add a new calculation card to workspace."""
         # Hide empty state message
         if self.empty_label:
             self.empty_label.destroy()
@@ -358,6 +473,8 @@ class WorkspaceDisplay(ttk.Frame):
             on_add_note=lambda note: self.handle_add_note(calculation.id, note),
             on_request_analysis=lambda: self.handle_request_analysis(calculation.id),
             on_remove=lambda: self.handle_remove_calculation(calculation.id),
+            on_edit_calculation=lambda calc_id,
+            updated_calc: self.handle_edit_calculation(calc_id, updated_calc),
             tooltips=self.tooltips,
         )
 
@@ -375,7 +492,7 @@ class WorkspaceDisplay(ttk.Frame):
             card.update_display()
 
     def remove_calculation_card(self, calc_id: str):
-        """Remove a calculation card from the workspace."""
+        """Remove a calculation card from workspace."""
         if calc_id in self.calculation_cards:
             card = self.calculation_cards[calc_id]
             card.destroy()
@@ -410,7 +527,7 @@ class WorkspaceDisplay(ttk.Frame):
             self.empty_label.pack(expand=True, pady=50)
 
     def handle_add_note(self, calc_id: str, note: str):
-        """Handle add note action."""
+        """Handle adding note to calculation."""
         if self.on_add_note:
             self.on_add_note(calc_id, note)
 
@@ -420,9 +537,14 @@ class WorkspaceDisplay(ttk.Frame):
             self.on_request_analysis(calc_id)
 
     def handle_remove_calculation(self, calc_id: str):
-        """Handle remove calculation action."""
+        """Handle calculation removal."""
         if self.on_remove_calculation:
             self.on_remove_calculation(calc_id)
+
+    def handle_edit_calculation(self, calc_id: str, updated_calculation):
+        """Handle calculation edit."""
+        if self.on_edit_calculation:
+            self.on_edit_calculation(calc_id, updated_calculation)
 
     def show_clear_confirmation(self):
         """Show confirmation dialog for clearing workspace."""
@@ -462,7 +584,7 @@ class V2ControlPanel(ttk.Frame):
         self.setup_ui()
 
     def setup_ui(self):
-        """Setup the control panel UI."""
+        """Setup control panel UI."""
         # Header
         header_label = ttk.Label(
             self, text="🎛️ KONTROL PANELİ", font=("Arial", 11, "bold")

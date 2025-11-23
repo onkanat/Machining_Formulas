@@ -10,8 +10,8 @@ from typing import Dict, Iterable, List
 from engineering_calculator import EngineeringCalculator
 
 
-_DEFAULT_CHAT_URL = "http://192.168.1.14:11434/v1/chat"
-_DEFAULT_TAGS_URL = "http://192.168.1.14:11434/v1/tags"
+_DEFAULT_CHAT_URL = "http://192.168.1.14:11434/api/chat"
+_DEFAULT_TAGS_URL = "http://192.168.1.14:11434/api/tags"
 
 
 def normalize_chat_url(url: str | None) -> str:
