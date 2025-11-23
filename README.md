@@ -134,10 +134,26 @@ python horz_gui.py
 ```
 
 #### V2 (Yeni Tek Sayfa Sistemi)  
+
+**🚀 Otomatik Launcher (Tavsiye Edilen):**
+
+**Linux/macOS:**
+```bash
+# V2 - Otomatik environment kontrolü ile
+./run_v2.sh
+```
+
+**Windows:**
+```cmd
+# V2 - Otomatik environment kontrolü ile
+run_v2.bat
+```
+
+**🔧 Manuel Başlatma:**
 ```bash
 # V2 - Tek sayfa çalışma alanı
 pip install -r requirements_v2.txt
-python v2_gui.py
+python3.11 v2_gui.py  # Python 3.11+ with tkinter support
 ```
 
 ### 📦 Bağımlılıklar
