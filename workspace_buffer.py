@@ -346,8 +346,41 @@ class WorkspaceBuffer:
             "stats": self.get_stats(),
         }
 
+    def save_to_file(self, filepath: str) -> bool:
+        """Save workspace to file."""
+        try:
+            import json
+
+            data = self.export_session()
+
+            # Handle datetime serialization
+            def datetime_handler(obj):
+                if hasattr(obj, "isoformat"):
+                    return obj.isoformat()
+                raise TypeError(repr(obj) + " is not JSON serializable")
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(
+                    data, f, indent=2, ensure_ascii=False, default=datetime_handler
+                )
+            return True
+        except Exception as e:
+            print(f"Error saving workspace: {e}")
+            return False
+
+    def load_from_file(self, filepath: str) -> bool:
+        """Load workspace from file."""
+        try:
+            import json
+
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return self.import_session(data)
+        except Exception as e:
+            print(f"Error loading workspace: {e}")
+            return False
+
     def import_session(self, data: Dict[str, Any]) -> bool:
-        """Import workspace session data."""
         try:
             self.content = data.get("content", "")
             self.edits = [

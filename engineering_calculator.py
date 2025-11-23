@@ -11,154 +11,176 @@ class EngineeringCalculator:
     def __init__(self):
         # Şekil hacim formülleri (mm cinsinden, hacim mm^3 döner)
         self.shape_definitions: Dict[str, Callable[..., float]] = {
-            'triangle': lambda width, height, length: (width * height / 2) * length,
-            'circle': lambda radius, length: (math.pi * radius ** 2) * length,
-            'semi-circle': lambda radius, length: (math.pi * radius ** 2 / 2) * length,
-            'square': lambda width, length: (width ** 2) * length,
-            'rectangle': lambda width, height, length: (width * height) * length,
-            'parallelogram': lambda width, height, length: (width * height) * length,
-            'rhombus': lambda diagonal1, diagonal2, length: (diagonal1 * diagonal2 / 2) * length,
-            'trapezium': lambda height1, height2, length1, length2: ((length1 + length2) / 2 * height1) * height2,  # Not: Formül örnek, gerekirse düzelt
-            'kite': lambda diagonal1, diagonal2, length: (diagonal1 * diagonal2 / 2) * length,
-            'pentagon': lambda width, length: (5 / 4 * width ** 2 / math.tan(math.pi / 5)) * length,
-            'hexagon': lambda width, length: (3 * math.sqrt(3) / 2 * width ** 2) * length,
-            'octagon': lambda width, length: (2 * (1 + math.sqrt(2)) * width ** 2) * length,
-            'nonagon': lambda width, length: (9 / 4 * width ** 2 * (1 / math.tan(math.pi / 9))) * length,
-            'decagon': lambda width, length: (5 / 2 * width ** 2 * (1 / math.tan(math.pi / 10))) * length,
+            "triangle": lambda width, height, length: ((width * height) / 2) * length,
+            "circle": lambda radius, length: (math.pi * radius**2) * length,
+            "semi-circle": lambda radius, length: (math.pi * radius**2 / 2) * length,
+            "square": lambda width, length: (width**2) * length,
+            "rectangle": lambda width, height, length: (width * height) * length,
+            "parallelogram": lambda width, height, length: (width * height) * length,
+            "rhombus": lambda diagonal1, diagonal2, length: (diagonal1 * diagonal2 / 2)
+            * length,
+            "trapezium": lambda height1, height2, length1, length2: (
+                (length1 + length2) / 2 * height1
+            )
+            * height2,  # Not: Formül örnek, gerekirse düzelt
+            "kite": lambda diagonal1, diagonal2, length: (diagonal1 * diagonal2 / 2)
+            * length,
+            "pentagon": lambda width, length: (5 / 4 * width**2 / math.tan(math.pi / 5))
+            * length,
+            "hexagon": lambda width, length: (3 * math.sqrt(3) / 2 * width**2) * length,
+            "octagon": lambda width, length: (2 * (1 + math.sqrt(2)) * width**2)
+            * length,
+            "nonagon": lambda width, length: (
+                9 / 4 * width**2 * (1 / math.tan(math.pi / 9))
+            )
+            * length,
+            "decagon": lambda width, length: (
+                5 / 2 * width**2 * (1 / math.tan(math.pi / 10))
+            )
+            * length,
+            "tube": lambda outer_radius, inner_radius, length: (
+                math.pi * (outer_radius**2 - inner_radius**2)
+            )
+            * length,
+            "sphere": lambda radius: (4 / 3)
+            * math.pi
+            * radius**3,  # Note: No length parameter for sphere
         }
         # Malzeme yoğunlukları (g/cm^3)
         self.material_density: Dict[str, float] = {
-            'Çelik': 7.85,
-            'Alüminyum': 2.70,
-            'Bakır': 8.96,
-            'Pirinç': 8.50,
-            'Dökme Demir': 7.20,
-            'Plastik': 1.20,
-            'Titanyum': 4.51,
-            'Kurşun': 11.34,
-            'Çinko': 7.14,
-            'Nikel': 8.90,
+            "Çelik": 7.85,
+            "Alüminyum": 2.70,
+            "Bakır": 8.96,
+            "Pirinç": 8.50,
+            "Dökme Demir": 7.20,
+            "Plastik": 1.20,
+            "Titanyum": 4.51,
+            "Kurşun": 11.34,
+            "Çinko": 7.14,
+            "Nikel": 8.90,
         }
         # Tornalama ve frezeleme tanımları (mevcut koddan alınacak)
         self.turning_definitions = {
-            'Cutting speed': {
-                'formula': lambda Dm, n: (Dm * math.pi * n) / 1000,
-                'units': {
-                    'Dm': 'mm (machined diameter)',
-                    'n': 'rpm (spindle speed)',
-                    'result': 'm/min'
-                }
+            "Cutting speed": {
+                "formula": lambda Dm, n: (Dm * math.pi * n) / 1000,
+                "units": {
+                    "Dm": "mm (machined diameter)",
+                    "n": "rpm (spindle speed)",
+                    "result": "m/min",
+                },
             },
-            'Spindle speed': {
-                'formula': lambda Vc, Dm: (Vc * 1000) / (math.pi * Dm),
-                'units': {
-                    'Vc': 'm/min (cutting speed)',
-                    'Dm': 'mm (machined diameter)',
-                    'result': 'rpm'
-                }
+            "Spindle speed": {
+                "formula": lambda Vc, Dm: (Vc * 1000) / (math.pi * Dm),
+                "units": {
+                    "Vc": "m/min (cutting speed)",
+                    "Dm": "mm (machined diameter)",
+                    "result": "rpm",
+                },
             },
-            'Metal removal rate': {
-                'formula': lambda Vc, ap, fn: (Vc * ap * fn),
-                'units': {
-                    'Vc': 'm/min (cutting speed)',
-                    'ap': 'mm (cutting depth)',
-                    'fn': 'mm/rev (feed per revolution)',
-                    'result': 'cm³/min'
-                }
+            "Metal removal rate": {
+                "formula": lambda Vc, ap, fn: (Vc * ap * fn),
+                "units": {
+                    "Vc": "m/min (cutting speed)",
+                    "ap": "mm (cutting depth)",
+                    "fn": "mm/rev (feed per revolution)",
+                    "result": "cm³/min",
+                },
             },
-            'Net power': {
-                'formula': lambda Vc, ap, fn, kc: (Vc * ap * fn * kc) / (60 * 10**3),
-                'units': {
-                    'Vc': 'm/min (cutting speed)',
-                    'ap': 'mm (cutting depth)',
-                    'fn': 'mm/rev (feed per revolution)',
-                    'kc': 'N/mm² (specific cutting force)',
-                    'result': 'kW'
-                }
+            "Net power": {
+                "formula": lambda Vc, ap, fn, kc: (Vc * ap * fn * kc) / (60 * 10**3),
+                "units": {
+                    "Vc": "m/min (cutting speed)",
+                    "ap": "mm (cutting depth)",
+                    "fn": "mm/rev (feed per revolution)",
+                    "kc": "N/mm² (specific cutting force)",
+                    "result": "kW",
+                },
             },
-            'Machining time': {
-                'formula': lambda lm, fn, n: (lm / (fn * n)),
-                'units': {
-                    'lm': 'mm (machined length)',
-                    'fn': 'mm/rev (feed per revolution)',
-                    'n': 'rpm (spindle speed)',
-                    'result': 'min'
-                }
-            }
+            "Machining time": {
+                "formula": lambda lm, fn, n: (lm / (fn * n)),
+                "units": {
+                    "lm": "mm (machined length)",
+                    "fn": "mm/rev (feed per revolution)",
+                    "n": "rpm (spindle speed)",
+                    "result": "min",
+                },
+            },
         }
         self.milling_definitions = {
-            'Table feed': {
-                'formula': lambda fz, n, ZEFF: (fz * n * ZEFF),
-                'units': {
-                    'fz': 'mm (feed per tooth)',
-                    'n': 'rpm (spindle speed)',
-                    'ZEFF': 'count (effective teeth)',
-                    'result': 'mm/min'
-                }
+            "Table feed": {
+                "formula": lambda fz, n, ZEFF: (fz * n * ZEFF),
+                "units": {
+                    "fz": "mm (feed per tooth)",
+                    "n": "rpm (spindle speed)",
+                    "ZEFF": "count (effective teeth)",
+                    "result": "mm/min",
+                },
             },
-            'Cutting speed': {
-                'formula': lambda DCap, n: (math.pi * DCap * n) / 1000,
-                'units': {
-                    'DCap': 'mm (cutting diameter)',
-                    'n': 'rpm (spindle speed)',
-                    'result': 'm/min'
-                }
+            "Cutting speed": {
+                "formula": lambda DCap, n: (math.pi * DCap * n) / 1000,
+                "units": {
+                    "DCap": "mm (cutting diameter)",
+                    "n": "rpm (spindle speed)",
+                    "result": "m/min",
+                },
             },
-            'Spindle speed': {
-                'formula': lambda Vc, DCap: (Vc * 1000) / (math.pi * DCap),
-                'units': {
-                    'Vc': 'm/min (cutting speed)',
-                    'DCap': 'mm (cutting diameter)',
-                    'result': 'rpm'
-                }
+            "Spindle speed": {
+                "formula": lambda Vc, DCap: (Vc * 1000) / (math.pi * DCap),
+                "units": {
+                    "Vc": "m/min (cutting speed)",
+                    "DCap": "mm (cutting diameter)",
+                    "result": "rpm",
+                },
             },
-            'Feed per tooth': {
-                'formula': lambda Vf, n, ZEFF: (Vf / (n * ZEFF)),
-                'units': {
-                    'Vf': 'mm/min (table feed)',
-                    'n': 'rpm (spindle speed)',
-                    'ZEFF': 'count (effective teeth)',
-                    'result': 'mm'
-                }
+            "Feed per tooth": {
+                "formula": lambda Vf, n, ZEFF: (Vf / (n * ZEFF)),
+                "units": {
+                    "Vf": "mm/min (table feed)",
+                    "n": "rpm (spindle speed)",
+                    "ZEFF": "count (effective teeth)",
+                    "result": "mm",
+                },
             },
-            'Feed per revolution': {
-                'formula': lambda Vf, n: (Vf / n),
-                'units': {
-                    'Vf': 'mm/min (table feed)',
-                    'n': 'rpm (spindle speed)',
-                    'result': 'mm/rev'
-                }
+            "Feed per revolution": {
+                "formula": lambda Vf, n: (Vf / n),
+                "units": {
+                    "Vf": "mm/min (table feed)",
+                    "n": "rpm (spindle speed)",
+                    "result": "mm/rev",
+                },
             },
-            'Metal removal rate': {
-                'formula': lambda Vf, ap, ae: ((ap * ae * Vf) / 1000),
-                'units': {
-                    'Vf': 'mm/min (table feed)',
-                    'ap': 'mm (axial depth of cut)',
-                    'ae': 'mm (radial depth of cut)',
-                    'result': 'cm³/min'
-                }
+            "Metal removal rate": {
+                "formula": lambda Vf, ap, ae: ((ap * ae * Vf) / 1000),
+                "units": {
+                    "Vf": "mm/min (table feed)",
+                    "ap": "mm (axial depth of cut)",
+                    "ae": "mm (radial depth of cut)",
+                    "result": "cm³/min",
+                },
             },
-            'Net power': {
-                'formula': lambda ae, ap, Vf, kc: (ae * ap * Vf * kc) / (60 * 10**6),
-                'units': {
-                    'ae': 'mm (radial depth of cut)',
-                    'ap': 'mm (axial depth of cut)',
-                    'Vf': 'mm/min (table feed)',
-                    'kc': 'N/mm² (specific cutting force)',
-                    'result': 'kW'
-                }
+            "Net power": {
+                "formula": lambda ae, ap, Vf, kc: (ae * ap * Vf * kc) / (60 * 10**6),
+                "units": {
+                    "ae": "mm (radial depth of cut)",
+                    "ap": "mm (axial depth of cut)",
+                    "Vf": "mm/min (table feed)",
+                    "kc": "N/mm² (specific cutting force)",
+                    "result": "kW",
+                },
             },
-            'Torque': {
-                'formula': lambda Pc, n: (Pc * 30 * 10**3) / (math.pi * n),
-                'units': {
-                    'Pc': 'kW (net power)',
-                    'n': 'rpm (spindle speed)',
-                    'result': 'Nm'
-                }
-            }
+            "Torque": {
+                "formula": lambda Pc, n: (Pc * 30 * 10**3) / (math.pi * n),
+                "units": {
+                    "Pc": "kW (net power)",
+                    "n": "rpm (spindle speed)",
+                    "result": "Nm",
+                },
+            },
         }
 
-    def calculate_material_mass(self, shape: str, density: float, *args: Union[float, int]) -> float:
+    def calculate_material_mass(
+        self, shape: str, density: float, *args: Union[float, int]
+    ) -> float:
         """
         Calculate mass of a given shape with specified material density.
 
@@ -180,14 +202,18 @@ class EngineeringCalculator:
             volume_mm3 = self.shape_definitions[shape](*args)
             volume_cm3 = volume_mm3 / 1000.0
             return volume_cm3 * density
-        except KeyError: # Handles cases where the shape string is not a valid key.
+        except KeyError:  # Handles cases where the shape string is not a valid key.
             raise ValueError(f"Invalid shape: {shape}")
-        except TypeError as e: # Handles errors from incorrect number of arguments for the lambda.
+        except (
+            TypeError
+        ) as e:  # Handles errors from incorrect number of arguments for the lambda.
             raise ValueError(f"Incorrect arguments for shape {shape}: {str(e)}")
-        except Exception as e: # Catches other potential calculation errors.
+        except Exception as e:  # Catches other potential calculation errors.
             raise ValueError(f"Calculation error for shape {shape}: {str(e)}")
 
-    def calculate_turning(self, definition: str, *args: Union[float, int]) -> Dict[str, Any]:
+    def calculate_turning(
+        self, definition: str, *args: Union[float, int]
+    ) -> Dict[str, Any]:
         """
         Calculate turning parameters based on the provided definition and arguments.
 
@@ -203,17 +229,25 @@ class EngineeringCalculator:
         """
         try:
             calc_definition = self.turning_definitions[definition]
-            calculated_value = calc_definition['formula'](*args)
+            calculated_value = calc_definition["formula"](*args)
             return {
-                'value': calculated_value,
-                'units': calc_definition['units']['result']
+                "value": calculated_value,
+                "units": calc_definition["units"]["result"],
             }
-        except KeyError: # Handles cases where the definition string is not a valid key.
+        except (
+            KeyError
+        ):  # Handles cases where the definition string is not a valid key.
             raise ValueError(f"Invalid turning calculation: {definition}")
-        except TypeError as e: # Handles errors from incorrect number of arguments for the lambda.
-            raise ValueError(f"Incorrect arguments for turning calculation {definition}: {str(e)}")
+        except (
+            TypeError
+        ) as e:  # Handles errors from incorrect number of arguments for the lambda.
+            raise ValueError(
+                f"Incorrect arguments for turning calculation {definition}: {str(e)}"
+            )
 
-    def calculate_milling(self, definition: str, *args: Union[float, int]) -> Dict[str, Any]:
+    def calculate_milling(
+        self, definition: str, *args: Union[float, int]
+    ) -> Dict[str, Any]:
         """
         Calculate milling parameters based on the provided definition and arguments.
 
@@ -229,15 +263,21 @@ class EngineeringCalculator:
         """
         try:
             calc_definition = self.milling_definitions[definition]
-            calculated_value = calc_definition['formula'](*args)
+            calculated_value = calc_definition["formula"](*args)
             return {
-                'value': calculated_value,
-                'units': calc_definition['units']['result']
+                "value": calculated_value,
+                "units": calc_definition["units"]["result"],
             }
-        except KeyError: # Handles cases where the definition string is not a valid key.
+        except (
+            KeyError
+        ):  # Handles cases where the definition string is not a valid key.
             raise ValueError(f"Invalid milling calculation: {definition}")
-        except TypeError as e: # Handles errors from incorrect number of arguments for the lambda.
-            raise ValueError(f"Incorrect arguments for milling calculation {definition}: {str(e)}")
+        except (
+            TypeError
+        ) as e:  # Handles errors from incorrect number of arguments for the lambda.
+            raise ValueError(
+                f"Incorrect arguments for milling calculation {definition}: {str(e)}"
+            )
 
     def get_available_calculations(self) -> Dict[str, List[str]]:
         """
@@ -249,9 +289,15 @@ class EngineeringCalculator:
                   Values are lists of calculation definition keys (names) available for each category.
         """
         return {
-            'shapes': list(self.shape_definitions.keys()), # These are shape keys for mass calculation.
-            'turning': list(self.turning_definitions.keys()), # Keys for various turning calculations.
-            'milling': list(self.milling_definitions.keys())  # Keys for various milling calculations.
+            "shapes": list(
+                self.shape_definitions.keys()
+            ),  # These are shape keys for mass calculation.
+            "turning": list(
+                self.turning_definitions.keys()
+            ),  # Keys for various turning calculations.
+            "milling": list(
+                self.milling_definitions.keys()
+            ),  # Keys for various milling calculations.
         }
 
     def get_material_density(self, material: str) -> float:
@@ -268,7 +314,7 @@ class EngineeringCalculator:
         """
         try:
             return self.material_density[material]
-        except KeyError: # Handles cases where the material string is not a valid key.
+        except KeyError:  # Handles cases where the material string is not a valid key.
             raise ValueError(f"Unknown material: {material}")
 
     def get_available_shapes(self) -> Dict[str, str]:
@@ -283,48 +329,61 @@ class EngineeringCalculator:
         """
         # This mapping provides a user-friendly name for each shape key used internally.
         return {
-            'triangle': 'Üçgen',
-            'circle': 'Daire',
-            'semi-circle': 'Yarım Daire',
-            'square': 'Kare',
-            'rectangle': 'Dikdörtgen',
-            'parallelogram': 'Paralelkenar',
-            'rhombus': 'Eşkenar Dörtgen',
-            'trapezium': 'Yamuk',     # Note: Formula for trapezium in shape_definitions is unusual.
-            'kite': 'Uçurtma',        # Note: Formula for kite area in shape_definitions might be incorrect.
-            'pentagon': 'Beşgen',     # Note: Polygon formulas in shape_definitions are non-standard approximations.
-            'hexagon': 'Altıgen',
-            'octagon': 'Sekizgen',
-            'nonagon': 'Dokuzgen',
-            'decagon': 'Ongen'
+            "triangle": "Üçgen",
+            "circle": "Daire",
+            "semi-circle": "Yarım Daire",
+            "square": "Kare",
+            "rectangle": "Dikdörtgen",
+            "parallelogram": "Paralelkenar",
+            "rhombus": "Eşkenar Dörtgen",
+            "trapezium": "Yamuk",  # Note: Formula for trapezium in shape_definitions is unusual.
+            "kite": "Uçurtma",  # Note: Formula for kite area in shape_definitions might be incorrect.
+            "pentagon": "Beşgen",  # Note: Polygon formulas in shape_definitions are non-standard approximations.
+            "hexagon": "Altıgen",
+            "octagon": "Sekizgen",
+            "nonagon": "Dokuzgen",
+            "decagon": "Ongen",
+            "tube": "Boru",
+            "sphere": "Küre",
         }
 
     # Mapping of internal parameter names to Turkish display names for UI labels.
     PARAM_TURKISH_NAMES: Dict[str, str] = {
         # Turning parameters
-        'Dm': 'İşlenen Çap',  # Machined Diameter
-        'n': 'İş Mili Devri',  # Spindle Speed (rpm)
-        'Vc': 'Kesme Hızı',  # Cutting Speed
-        'ap': 'Kesme Derinliği',  # Depth of Cut
-        'fn': 'Devir Başına İlerleme',  # Feed per Revolution
-        'kc': 'Özgül Kesme Kuvveti',  # Specific Cutting Force
-        'lm': 'İşlenecek Uzunluk',  # Machined Length
+        "Dm": "İşlenen Çap",  # Machined Diameter
+        "n": "İş Mili Devri",  # Spindle Speed (rpm)
+        "Vc": "Kesme Hızı",  # Cutting Speed
+        "ap": "Kesme Derinliği",  # Depth of Cut
+        "fn": "Devir Başına İlerleme",  # Feed per Revolution
+        "kc": "Özgül Kesme Kuvveti",  # Specific Cutting Force
+        "lm": "İşlenecek Uzunluk",  # Machined Length
         # Milling parameters
-        'fz': 'Diş Başına İlerleme (fz)',  # Feed per Tooth
-        'ZEFF': 'Efektif Diş Sayısı',  # Effective Number of Teeth
-        'DCap': 'Kesme Çapı (Takım)',  # Cutting Diameter (Tool)
-        'Vf': 'Tabla İlerlemesi (Vf)',  # Table Feed
-        'ae': 'Yanal Kesme Derinliği',  # Radial Depth of Cut
+        "fz": "Diş Başına İlerleme (fz)",  # Feed per Tooth
+        "ZEFF": "Efektif Diş Sayısı",  # Effective Number of Teeth
+        "DCap": "Kesme Çapı (Takım)",  # Cutting Diameter (Tool)
+        "Vf": "Tabla İlerlemesi (Vf)",  # Table Feed
+        "ae": "Yanal Kesme Derinliği",  # Radial Depth of Cut
         # Common / Other
-        'Pc': 'Net Güç (Pc)',  # Net Power
+        "Pc": "Net Güç (Pc)",  # Net Power
         # Note: Some keys like 'D' (used in older milling defs) might need mapping if they differ from DCap.
         # Assuming 'D' was an alias for DCap or specific context.
         # The current definitions use 'DCap' for milling cutting diameter.
         # 'z' for tooth count in milling (usually ZEFF is more specific for effective teeth)
-        'z': 'Diş Sayısı (z)', # Number of teeth
+        "z": "Diş Sayısı (z)",  # Number of teeth
+        # Shape parameters
+        "radius": "Yarıçap",
+        "width": "Genişlik",
+        "height": "Yükseklik",
+        "outer_radius": "Dış Yarıçap",
+        "inner_radius": "İç Yarıçap",
+        "diagonal1": "Köşegen 1",
+        "diagonal2": "Köşegen 2",
+        "length": "Uzunluk",
     }
 
-    def get_calculation_params(self, calc_category_key: str, calc_method_key: str) -> List[Dict[str, str]]:
+    def get_calculation_params(
+        self, calc_category_key: str, calc_method_key: str
+    ) -> List[Dict[str, str]]:
         """
         Retrieves a list of parameter details for a given calculation,
         including their internal names, units, and Turkish display names.
@@ -336,41 +395,43 @@ class EngineeringCalculator:
         Returns:
             List[Dict[str, str]]: A list of dictionaries, each describing a parameter.
                 Each dictionary has 'name', 'unit', and 'display_text_turkish'.
-        
+
         Raises:
             ValueError: If the category or method key is invalid.
         """
         definitions_map = {
-            'turning': self.turning_definitions,
-            'milling': self.milling_definitions
+            "turning": self.turning_definitions,
+            "milling": self.milling_definitions,
         }
 
         if calc_category_key not in definitions_map:
             raise ValueError(f"Invalid calculation category key: {calc_category_key}")
-        
+
         category_definitions = definitions_map[calc_category_key]
 
         if calc_method_key not in category_definitions:
-            raise ValueError(f"Invalid calculation method key '{calc_method_key}' for category '{calc_category_key}'")
+            raise ValueError(
+                f"Invalid calculation method key '{calc_method_key}' for category '{calc_category_key}'"
+            )
 
-        param_units_dict = category_definitions[calc_method_key].get('units', {})
-        
+        param_units_dict = category_definitions[calc_method_key].get("units", {})
+
         param_details_list = []
         for param_name, unit_description in param_units_dict.items():
-            if param_name == 'result': # Skip the 'result' unit entry
+            if param_name == "result":  # Skip the 'result' unit entry
                 continue
-            
-            # Extract only the unit part (e.g., "mm" from "mm (machined diameter)")
-            unit = unit_description.split(' ')[0] if unit_description else ""
 
-            display_text = self.PARAM_TURKISH_NAMES.get(param_name, param_name.capitalize()) # Fallback to capitalized name
-            
-            param_details_list.append({
-                'name': param_name,
-                'unit': unit,
-                'display_text_turkish': display_text
-            })
-            
+            # Extract only the unit part (e.g., "mm" from "mm (machined diameter)")
+            unit = unit_description.split(" ")[0] if unit_description else ""
+
+            display_text = self.PARAM_TURKISH_NAMES.get(
+                param_name, param_name.capitalize()
+            )  # Fallback to capitalized name
+
+            param_details_list.append(
+                {"name": param_name, "unit": unit, "display_text_turkish": display_text}
+            )
+
         return param_details_list
 
     def get_shape_parameters(self, shape_key: str) -> List[str]:
@@ -395,76 +456,87 @@ class EngineeringCalculator:
         if shape_key not in self.shape_definitions:
             raise ValueError(f"Invalid shape key: {shape_key}")
 
-        func: Callable[..., float] = self.shape_definitions[shape_key] # Get the lambda function for the shape.
+        func: Callable[..., float] = self.shape_definitions[
+            shape_key
+        ]  # Get the lambda function for the shape.
         # Inspect the function's code object to get its argument names.
         # co_varnames contains all local variables; co_argcount gives the number of arguments.
-        param_names = list(func.__code__.co_varnames[:func.__code__.co_argcount])
+        param_names = list(func.__code__.co_varnames[: func.__code__.co_argcount])
 
         # 'length' is conventionally the last parameter in shape_definitions lambdas,
         # representing the extrusion length for volume calculation.
         # This method is designed to return parameters for the 2D cross-section.
-        if 'length' in param_names:
-            param_names.remove('length')
-        
+        # Special case: sphere doesn't have a length parameter
+        if shape_key != "sphere" and "length" in param_names:
+            param_names.remove("length")
+
         return param_names
 
+
 if __name__ == "__main__":
-        # Example usage for testing and demonstration purposes.
-        calc = EngineeringCalculator()
+    # Example usage for testing and demonstration purposes.
+    calc = EngineeringCalculator()
 
-        # Mass calculation example
-        try:
-            # Dimensions: width=3mm, height=4mm, length=100mm. Density of steel approx 7.85 g/cm³
-            # Volume = (3*4/2) * 100 = 600 mm³ = 0.6 cm³
-            # Mass = 0.6 cm³ * 7.85 g/cm³ = 4.71 g
-            mass = calc.calculate_material_mass("triangle", 7.85, 3, 4, 100)
-            print(f"Triangle mass: {mass:.2f}g") # Format output for readability
-        except ValueError as e:
-            print(f"Error in mass calculation: {e}")
+    # Mass calculation example
+    try:
+        # Dimensions: width=3mm, height=4mm, length=100mm. Density of steel approx 7.85 g/cm³
+        # Volume = (3*4/2) * 100 = 600 mm³ = 0.6 cm³
+        # Mass = 0.6 cm³ * 7.85 g/cm³ = 4.71 g
+        mass = calc.calculate_material_mass("triangle", 7.85, 3, 4, 100)
+        print(f"Triangle mass: {mass:.2f}g")  # Format output for readability
+    except ValueError as e:
+        print(f"Error in mass calculation: {e}")
 
+    # Turning calculation example
+    try:
+        speed = calc.calculate_turning("Cutting speed", 120, 100)  # Dm=120mm, n=100rpm
+        print(f"Cutting speed: {speed['value']:.2f} {speed['units']}")
+    except ValueError as e:
+        print(f"Error in turning calculation: {e}")
 
-        # Turning calculation example
-        try:
-            speed = calc.calculate_turning("Cutting speed", 120, 100) # Dm=120mm, n=100rpm
-            print(f"Cutting speed: {speed['value']:.2f} {speed['units']}")
-        except ValueError as e:
-            print(f"Error in turning calculation: {e}")
+    # Milling calculation example
+    try:
+        feed = calc.calculate_milling(
+            "Table feed", 0.1, 100, 3
+        )  # fz=0.1mm, n=100rpm, Zeff=3
+        print(f"Table feed: {feed['value']:.2f} {feed['units']}")
+    except ValueError as e:
+        print(f"Error in milling calculation: {e}")
 
-        # Milling calculation example
-        try:
-            feed = calc.calculate_milling("Table feed", 0.1, 100, 3) # fz=0.1mm, n=100rpm, Zeff=3
-            print(f"Table feed: {feed['value']:.2f} {feed['units']}")
-        except ValueError as e:
-            print(f"Error in milling calculation: {e}")
-
-        # Example for get_shape_parameters to demonstrate its use
-        print("\nShape parameter examples:")
-        try:
-            for shape_example_key in ['circle', 'triangle', 'trapezium', 'square', 'nonexistent_shape']:
-                if shape_example_key == 'nonexistent_shape': # Test error handling
-                    try:
-                        params = calc.get_shape_parameters(shape_example_key)
-                        print(f"Parameters for '{shape_example_key}': {params}")
-                    except ValueError as e:
-                        print(f"Error for '{shape_example_key}': {e}")
-                else:
+    # Example for get_shape_parameters to demonstrate its use
+    print("\nShape parameter examples:")
+    try:
+        for shape_example_key in [
+            "circle",
+            "triangle",
+            "trapezium",
+            "square",
+            "nonexistent_shape",
+        ]:
+            if shape_example_key == "nonexistent_shape":  # Test error handling
+                try:
                     params = calc.get_shape_parameters(shape_example_key)
                     print(f"Parameters for '{shape_example_key}': {params}")
-        except ValueError as e: # Should not happen if keys are correct
-            print(f"Error getting shape parameters: {e}")
-        
-        # Example for get_calculation_params
-        print("\nCalculation parameter examples:")
-        try:
-            turning_cs_params = calc.get_calculation_params('turning', 'Cutting speed')
-            print(f"Params for Turning - Cutting speed: {turning_cs_params}")
-            # Expected: [{'name': 'Dm', 'unit': 'mm', 'display_text_turkish': 'İşlenen Çap'}, {'name': 'n', 'unit': 'rpm', 'display_text_turkish': 'İş Mili Devri'}]
-            
-            milling_tf_params = calc.get_calculation_params('milling', 'Table feed')
-            print(f"Params for Milling - Table feed: {milling_tf_params}")
-            # Expected: [{'name': 'fz', 'unit': 'mm', 'display_text_turkish': 'Diş Başına İlerleme (fz)'}, {'name': 'n', 'unit': 'rpm', 'display_text_turkish': 'İş Mili Devri'}, {'name': 'ZEFF', 'unit': 'count', 'display_text_turkish': 'Efektif Diş Sayısı'}]
+                except ValueError as e:
+                    print(f"Error for '{shape_example_key}': {e}")
+            else:
+                params = calc.get_shape_parameters(shape_example_key)
+                print(f"Parameters for '{shape_example_key}': {params}")
+    except ValueError as e:  # Should not happen if keys are correct
+        print(f"Error getting shape parameters: {e}")
 
-            # Test invalid key
-            # calc.get_calculation_params('turning', 'Invalid Speed') # Should raise ValueError
-        except ValueError as e:
-            print(f"Error getting calculation parameters: {e}")
+    # Example for get_calculation_params
+    print("\nCalculation parameter examples:")
+    try:
+        turning_cs_params = calc.get_calculation_params("turning", "Cutting speed")
+        print(f"Params for Turning - Cutting speed: {turning_cs_params}")
+        # Expected: [{'name': 'Dm', 'unit': 'mm', 'display_text_turkish': 'İşlenen Çap'}, {'name': 'n', 'unit': 'rpm', 'display_text_turkish': 'İş Mili Devri'}]
+
+        milling_tf_params = calc.get_calculation_params("milling", "Table feed")
+        print(f"Params for Milling - Table feed: {milling_tf_params}")
+        # Expected: [{'name': 'fz', 'unit': 'mm', 'display_text_turkish': 'Diş Başına İlerleme (fz)'}, {'name': 'n', 'unit': 'rpm', 'display_text_turkish': 'İş Mili Devri'}, {'name': 'ZEFF', 'unit': 'count', 'display_text_turkish': 'Efektif Diş Sayısı'}]
+
+        # Test invalid key
+        # calc.get_calculation_params('turning', 'Invalid Speed') # Should raise ValueError
+    except ValueError as e:
+        print(f"Error getting calculation parameters: {e}")

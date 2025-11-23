@@ -24,11 +24,9 @@ from material_utils import MaterialMassParameters, prepare_material_mass_argumen
 # V3 Components
 from workspace_buffer import WorkspaceBuffer
 from workspace_editor import WorkspaceEditor
-from ollama_utils_v2 import (
-    single_chat_request,
-    get_available_models,
-    test_connection,
-)
+
+# Ollama integration
+from ollama_utils_v2 import get_available_models, single_chat_request, test_connection
 
 # V1 Components (PRESERVED)
 from execute_mode import ExecuteModeMixin
@@ -61,9 +59,12 @@ class V3Calculator(ExecuteModeMixin):
         self.workspace_buffer = WorkspaceBuffer()
 
         # Model configuration
-        self.current_model_url = ""
+        self.current_model_url = "http://localhost:11434"
         self.current_model_name = ""
         self.ollama_models: List[str] = []
+
+        # Cache frequently used data for performance
+        self._initialize_cached_data()
 
         # Setup UI
         self.setup_ui()
@@ -72,11 +73,45 @@ class V3Calculator(ExecuteModeMixin):
         # Initialize model connection
         self.refresh_model_list()
 
+    def _initialize_cached_data(self):
+        """Initialize cached data for better performance."""
+        # Cache shape mappings
+        self.available_shapes_map = ec.get_available_shapes()
+        self.reverse_shape_names = {v: k for k, v in self.available_shapes_map.items()}
+
+        # Cache material data
+        self.material_names = list(ec.material_density.keys())
+        self.material_densities = ec.material_density.copy()
+
+        # Cache parameter mappings
+        self.param_to_gui_key_map = {
+            "radius": "Yarıçap",
+            "width": "Genişlik",
+            "height": "Yükseklik",
+            "outer_radius": "Dış Yarıçap",
+            "inner_radius": "İç Yarıçap",
+            "diagonal1": "Köşegen 1",
+            "diagonal2": "Köşegen 2",
+        }
+
     def setup_ui(self):
         """Setup the main V3 interface."""
         # Configure root window
         self.root.title("🔧 Mühendislik Hesaplayıcı V3 - Çalışma Alanı")
         self.root.geometry(f"{DEFAULT_WINDOW_SIZE[0]}x{DEFAULT_WINDOW_SIZE[1]}")
+
+        # Configure focus and keyboard handling
+        self.root.focus_set()
+
+        # Enable proper focus traversal
+        self.root.tk.call("tkwait", "visibility", self.root)
+
+        # Bind Tab key for navigation
+        self.root.bind("<Tab>", self._handle_tab_navigation)
+        self.root.bind("<Shift-Tab>", self._handle_shift_tab_navigation)
+
+        # Bind mouse click to ensure focus
+        self.root.bind("<Button-1>", self._handle_root_click)
 
         # Configure styles
         self._setup_styles()
@@ -89,6 +124,73 @@ class V3Calculator(ExecuteModeMixin):
 
         # Create status bar
         self._create_status_bar()
+
+        # Setup focus management after all widgets are created
+        # self.root.after(1000, self._setup_focus_management)
+
+    def _setup_focus_management(self):
+        """Setup focus management for better keyboard/mouse interaction."""
+        try:
+            # Enable focus traversal for all widgets
+            self.root.focus_set()
+
+            # Make sure all Entry widgets can receive focus
+            for widget in self.root.winfo_children():
+                self._enable_widget_focus(widget)
+
+            # Set initial focus to first input field after a delay
+            self.root.after(200, self._set_initial_focus)
+
+        except Exception as e:
+            print(f"Focus setup error: {e}")
+
+    def _set_initial_focus(self):
+        """Set initial focus to first available input field."""
+        try:
+            if hasattr(self, "vc_diameter"):
+                self.vc_diameter.focus_set()
+                self.vc_diameter.select_range(0, tk.END)
+            elif hasattr(self, "model_url_entry"):
+                self.model_url_entry.focus_set()
+        except Exception:
+            pass
+
+    def _handle_root_click(self, event):
+        """Handle root window click to ensure proper focus."""
+        try:
+            # Get the widget that was clicked
+            widget = event.widget
+            if widget and widget != self.root:
+                widget.focus_set()
+        except Exception:
+            pass
+
+    def _enable_widget_focus(self, widget):
+        """Recursively enable focus for all widgets."""
+        try:
+            # Enable focus for Entry and Text widgets
+            if isinstance(widget, (tk.Entry, tk.Text)):
+                widget.config(takefocus=1)
+                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set())
+                widget.bind("<FocusIn>", lambda e: None)  # Ensure focus events work
+
+            # Enable focus for ttk.Entry and ttk.Combobox
+            elif isinstance(widget, (ttk.Entry, ttk.Combobox)):
+                widget.configure(takefocus=True)
+                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set())
+                widget.bind("<FocusIn>", lambda e: None)  # Ensure focus events work
+
+            # Enable focus for buttons
+            elif isinstance(widget, (ttk.Button, tk.Button)):
+                widget.configure(takefocus=True)
+                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set())
+
+            # Recursively process children
+            for child in widget.winfo_children():
+                self._enable_widget_focus(child)
+
+        except Exception:
+            pass
 
     def _setup_styles(self):
         """Setup ttk styles."""
@@ -105,6 +207,22 @@ class V3Calculator(ExecuteModeMixin):
 
         # Configure combobox style
         style.configure("Calc.TCombobox", fieldbackground="white", font=("Arial", 9))
+
+        # Configure focus styles for better visibility
+        try:
+            style.map(
+                "TEntry",
+                focuscolor=[("focus", "blue")],
+                fieldbackground=[("focus", "white")],
+            )
+            style.map(
+                "TCombobox",
+                focuscolor=[("focus", "blue")],
+                fieldbackground=[("focus", "white")],
+            )
+        except:
+            # Fallback for older ttk versions
+            pass
 
     def _create_main_layout(self):
         """Create main layout with paned windows."""
@@ -329,12 +447,380 @@ class V3Calculator(ExecuteModeMixin):
         milling_frame = ttk.Frame(self.calc_notebook, style="Calc.TFrame")
         self.calc_notebook.add(milling_frame, text="Frezeleme")
 
-        # Add milling calculations here
-        ttk.Label(
-            milling_frame,
-            text="Frezeleme hesaplamaları yakında eklenecek...",
-            font=("Arial", 10),
-        ).pack(pady=20)
+        # Create scrollable frame for milling calculations
+        canvas = tk.Canvas(milling_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(
+            milling_frame, orient="vertical", command=canvas.yview
+        )
+        scrollable_frame = ttk.Frame(canvas, style="Calc.TFrame")
+
+        scrollable_frame.bind(
+            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Add milling calculations
+        self._create_milling_table_feed_calc(scrollable_frame)
+        self._create_milling_cutting_speed_calc(scrollable_frame)
+        self._create_milling_spindle_speed_calc(scrollable_frame)
+        self._create_milling_feed_per_tooth_calc(scrollable_frame)
+        self._create_milling_feed_per_revolution_calc(scrollable_frame)
+        self._create_milling_mrr_calc(scrollable_frame)
+        self._create_milling_net_power_calc(scrollable_frame)
+        self._create_milling_torque_calc(scrollable_frame)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def _create_milling_table_feed_calc(self, parent):
+        """Create milling table feed calculation."""
+        frame = ttk.LabelFrame(parent, text="Tabla İlerlemesi", style="Calc.TFrame")
+        frame.pack(fill="x", padx=5, pady=5)
+
+        # Feed per tooth input
+        feed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        feed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(feed_frame, text="Diş Başı İlerleme:", width=15).pack(side="left")
+        self.milling_feed_per_tooth = ttk.Entry(feed_frame, width=15)
+        self.milling_feed_per_tooth.pack(side="left", padx=(5, 0))
+        ttk.Label(feed_frame, text="mm/diş").pack(side="left", padx=(2, 0))
+
+        # Number of teeth input
+        teeth_frame = ttk.Frame(frame, style="Calc.TFrame")
+        teeth_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(teeth_frame, text="Diş Sayısı:", width=15).pack(side="left")
+        self.milling_num_teeth = ttk.Entry(teeth_frame, width=15)
+        self.milling_num_teeth.pack(side="left", padx=(5, 0))
+        ttk.Label(teeth_frame, text="adet").pack(side="left", padx=(2, 0))
+
+        # RPM input
+        rpm_frame = ttk.Frame(frame, style="Calc.TFrame")
+        rpm_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(rpm_frame, text="İş Mili Devri:", width=15).pack(side="left")
+        self.milling_rpm = ttk.Entry(rpm_frame, width=15)
+        self.milling_rpm.pack(side="left", padx=(5, 0))
+        ttk.Label(rpm_frame, text="rpm").pack(side="left", padx=(2, 0))
+
+        # Calculate button
+        ttk.Button(
+            frame, text="Hesapla", command=self._calculate_milling_table_feed
+        ).pack(pady=5)
+
+        # Result display
+        self.milling_table_feed_result = ttk.Label(
+            frame, text="", font=("Arial", 10, "bold"), foreground="blue"
+        )
+        self.milling_table_feed_result.pack(pady=2)
+
+        # Inject to workspace button
+        ttk.Button(
+            frame,
+            text="📝 Çalışma Alanına Ekle",
+            command=self._inject_milling_table_feed,
+        ).pack(pady=2)
+
+    def _create_milling_cutting_speed_calc(self, parent):
+        """Create milling cutting speed calculation."""
+        frame = ttk.LabelFrame(parent, text="Kesme Hızı", style="Calc.TFrame")
+        frame.pack(fill="x", padx=5, pady=5)
+
+        # Diameter input
+        diam_frame = ttk.Frame(frame, style="Calc.TFrame")
+        diam_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(diam_frame, text="Çap (D):", width=15).pack(side="left")
+        self.milling_cutting_diameter = ttk.Entry(diam_frame, width=15)
+        self.milling_cutting_diameter.pack(side="left", padx=(5, 0))
+        ttk.Label(diam_frame, text="mm").pack(side="left", padx=(2, 0))
+
+        # RPM input
+        rpm_frame = ttk.Frame(frame, style="Calc.TFrame")
+        rpm_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(rpm_frame, text="İş Mili Devri:", width=15).pack(side="left")
+        self.milling_cutting_rpm = ttk.Entry(rpm_frame, width=15)
+        self.milling_cutting_rpm.pack(side="left", padx=(5, 0))
+        ttk.Label(rpm_frame, text="rpm").pack(side="left", padx=(2, 0))
+
+        # Calculate button
+        ttk.Button(
+            frame, text="Hesapla", command=self._calculate_milling_cutting_speed
+        ).pack(pady=5)
+
+        # Result display
+        self.milling_cutting_speed_result = ttk.Label(
+            frame, text="", font=("Arial", 10, "bold"), foreground="blue"
+        )
+        self.milling_cutting_speed_result.pack(pady=2)
+
+        # Inject to workspace button
+        ttk.Button(
+            frame,
+            text="📝 Çalışma Alanına Ekle",
+            command=self._inject_milling_cutting_speed,
+        ).pack(pady=2)
+
+    def _create_milling_spindle_speed_calc(self, parent):
+        """Create milling spindle speed calculation."""
+        frame = ttk.LabelFrame(parent, text="İş Mili Devri", style="Calc.TFrame")
+        frame.pack(fill="x", padx=5, pady=5)
+
+        # Cutting speed input
+        speed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        speed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(speed_frame, text="Kesme Hızı:", width=15).pack(side="left")
+        self.milling_spindle_cutting_speed = ttk.Entry(speed_frame, width=15)
+        self.milling_spindle_cutting_speed.pack(side="left", padx=(5, 0))
+        ttk.Label(speed_frame, text="m/dak").pack(side="left", padx=(2, 0))
+
+        # Diameter input
+        diam_frame = ttk.Frame(frame, style="Calc.TFrame")
+        diam_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(diam_frame, text="Çap (D):", width=15).pack(side="left")
+        self.milling_spindle_diameter = ttk.Entry(diam_frame, width=15)
+        self.milling_spindle_diameter.pack(side="left", padx=(5, 0))
+        ttk.Label(diam_frame, text="mm").pack(side="left", padx=(2, 0))
+
+        # Calculate button
+        ttk.Button(
+            frame, text="Hesapla", command=self._calculate_milling_spindle_speed
+        ).pack(pady=5)
+
+        # Result display
+        self.milling_spindle_speed_result = ttk.Label(
+            frame, text="", font=("Arial", 10, "bold"), foreground="blue"
+        )
+        self.milling_spindle_speed_result.pack(pady=2)
+
+        # Inject to workspace button
+        ttk.Button(
+            frame,
+            text="📝 Çalışma Alanına Ekle",
+            command=self._inject_milling_spindle_speed,
+        ).pack(pady=2)
+
+    def _create_milling_feed_per_tooth_calc(self, parent):
+        """Create milling feed per tooth calculation."""
+        frame = ttk.LabelFrame(parent, text="Diş Başı İlerleme", style="Calc.TFrame")
+        frame.pack(fill="x", padx=5, pady=5)
+
+        # Table feed input
+        feed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        feed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(feed_frame, text="Tabla İlerlemesi:", width=15).pack(side="left")
+        self.milling_fz_table_feed = ttk.Entry(feed_frame, width=15)
+        self.milling_fz_table_feed.pack(side="left", padx=(5, 0))
+        ttk.Label(feed_frame, text="mm/dak").pack(side="left", padx=(2, 0))
+
+        # Number of teeth input
+        teeth_frame = ttk.Frame(frame, style="Calc.TFrame")
+        teeth_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(teeth_frame, text="Diş Sayısı:", width=15).pack(side="left")
+        self.milling_fz_num_teeth = ttk.Entry(teeth_frame, width=15)
+        self.milling_fz_num_teeth.pack(side="left", padx=(5, 0))
+        ttk.Label(teeth_frame, text="adet").pack(side="left", padx=(2, 0))
+
+        # RPM input
+        rpm_frame = ttk.Frame(frame, style="Calc.TFrame")
+        rpm_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(rpm_frame, text="İş Mili Devri:", width=15).pack(side="left")
+        self.milling_fz_rpm = ttk.Entry(rpm_frame, width=15)
+        self.milling_fz_rpm.pack(side="left", padx=(5, 0))
+        ttk.Label(rpm_frame, text="rpm").pack(side="left", padx=(2, 0))
+
+        # Calculate button
+        ttk.Button(
+            frame, text="Hesapla", command=self._calculate_milling_feed_per_tooth
+        ).pack(pady=5)
+
+        # Result display
+        self.milling_feed_per_tooth_result = ttk.Label(
+            frame, text="", font=("Arial", 10, "bold"), foreground="blue"
+        )
+        self.milling_feed_per_tooth_result.pack(pady=2)
+
+        # Inject to workspace button
+        ttk.Button(
+            frame,
+            text="📝 Çalışma Alanına Ekle",
+            command=self._inject_milling_feed_per_tooth,
+        ).pack(pady=2)
+
+    def _create_milling_feed_per_revolution_calc(self, parent):
+        """Create milling feed per revolution calculation."""
+        frame = ttk.LabelFrame(parent, text="Devir Başı İlerleme", style="Calc.TFrame")
+        frame.pack(fill="x", padx=5, pady=5)
+
+        # Table feed input
+        feed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        feed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(feed_frame, text="Tabla İlerlemesi:", width=15).pack(side="left")
+        self.milling_fn_table_feed = ttk.Entry(feed_frame, width=15)
+        self.milling_fn_table_feed.pack(side="left", padx=(5, 0))
+        ttk.Label(feed_frame, text="mm/dak").pack(side="left", padx=(2, 0))
+
+        # RPM input
+        rpm_frame = ttk.Frame(frame, style="Calc.TFrame")
+        rpm_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(rpm_frame, text="İş Mili Devri:", width=15).pack(side="left")
+        self.milling_fn_rpm = ttk.Entry(rpm_frame, width=15)
+        self.milling_fn_rpm.pack(side="left", padx=(5, 0))
+        ttk.Label(rpm_frame, text="rpm").pack(side="left", padx=(2, 0))
+
+        # Calculate button
+        ttk.Button(
+            frame, text="Hesapla", command=self._calculate_milling_feed_per_revolution
+        ).pack(pady=5)
+
+        # Result display
+        self.milling_feed_per_revolution_result = ttk.Label(
+            frame, text="", font=("Arial", 10, "bold"), foreground="blue"
+        )
+        self.milling_feed_per_revolution_result.pack(pady=2)
+
+        # Inject to workspace button
+        ttk.Button(
+            frame,
+            text="📝 Çalışma Alanına Ekle",
+            command=self._inject_milling_feed_per_revolution,
+        ).pack(pady=2)
+
+    def _create_milling_mrr_calc(self, parent):
+        """Create milling metal removal rate calculation."""
+        frame = ttk.LabelFrame(parent, text="Talaş Debisi", style="Calc.TFrame")
+        frame.pack(fill="x", padx=5, pady=5)
+
+        # Cutting speed input
+        speed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        speed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(speed_frame, text="Kesme Hızı:", width=15).pack(side="left")
+        self.milling_mrr_cutting_speed = ttk.Entry(speed_frame, width=15)
+        self.milling_mrr_cutting_speed.pack(side="left", padx=(5, 0))
+        ttk.Label(speed_frame, text="m/dak").pack(side="left", padx=(2, 0))
+
+        # Feed per tooth input
+        feed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        feed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(feed_frame, text="Diş Başı İlerleme:", width=15).pack(side="left")
+        self.milling_mrr_feed_per_tooth = ttk.Entry(feed_frame, width=15)
+        self.milling_mrr_feed_per_tooth.pack(side="left", padx=(5, 0))
+        ttk.Label(feed_frame, text="mm/diş").pack(side="left", padx=(2, 0))
+
+        # Number of teeth input
+        teeth_frame = ttk.Frame(frame, style="Calc.TFrame")
+        teeth_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(teeth_frame, text="Diş Sayısı:", width=15).pack(side="left")
+        self.milling_mrr_num_teeth = ttk.Entry(teeth_frame, width=15)
+        self.milling_mrr_num_teeth.pack(side="left", padx=(5, 0))
+        ttk.Label(teeth_frame, text="adet").pack(side="left", padx=(2, 0))
+
+        # Calculate button
+        ttk.Button(frame, text="Hesapla", command=self._calculate_milling_mrr).pack(
+            pady=5
+        )
+
+        # Result display
+        self.milling_mrr_result = ttk.Label(
+            frame, text="", font=("Arial", 10, "bold"), foreground="blue"
+        )
+        self.milling_mrr_result.pack(pady=2)
+
+        # Inject to workspace button
+        ttk.Button(
+            frame, text="📝 Çalışma Alanına Ekle", command=self._inject_milling_mrr
+        ).pack(pady=2)
+
+    def _create_milling_net_power_calc(self, parent):
+        """Create milling net power calculation."""
+        frame = ttk.LabelFrame(parent, text="Net Güç", style="Calc.TFrame")
+        frame.pack(fill="x", padx=5, pady=5)
+
+        # Cutting speed input
+        speed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        speed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(speed_frame, text="Kesme Hızı:", width=15).pack(side="left")
+        self.milling_power_cutting_speed = ttk.Entry(speed_frame, width=15)
+        self.milling_power_cutting_speed.pack(side="left", padx=(5, 0))
+        ttk.Label(speed_frame, text="m/dak").pack(side="left", padx=(2, 0))
+
+        # Feed per tooth input
+        feed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        feed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(feed_frame, text="Diş Başı İlerleme:", width=15).pack(side="left")
+        self.milling_power_feed_per_tooth = ttk.Entry(feed_frame, width=15)
+        self.milling_power_feed_per_tooth.pack(side="left", padx=(5, 0))
+        ttk.Label(feed_frame, text="mm/diş").pack(side="left", padx=(2, 0))
+
+        # Number of teeth input
+        teeth_frame = ttk.Frame(frame, style="Calc.TFrame")
+        teeth_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(teeth_frame, text="Diş Sayısı:", width=15).pack(side="left")
+        self.milling_power_num_teeth = ttk.Entry(teeth_frame, width=15)
+        self.milling_power_num_teeth.pack(side="left", padx=(5, 0))
+        ttk.Label(teeth_frame, text="adet").pack(side="left", padx=(2, 0))
+
+        # Calculate button
+        ttk.Button(
+            frame, text="Hesapla", command=self._calculate_milling_net_power
+        ).pack(pady=5)
+
+        # Result display
+        self.milling_net_power_result = ttk.Label(
+            frame, text="", font=("Arial", 10, "bold"), foreground="blue"
+        )
+        self.milling_net_power_result.pack(pady=2)
+
+        # Inject to workspace button
+        ttk.Button(
+            frame,
+            text="📝 Çalışma Alanına Ekle",
+            command=self._inject_milling_net_power,
+        ).pack(pady=2)
+
+    def _create_milling_torque_calc(self, parent):
+        """Create milling torque calculation."""
+        frame = ttk.LabelFrame(parent, text="Tork", style="Calc.TFrame")
+        frame.pack(fill="x", padx=5, pady=5)
+
+        # Cutting speed input
+        speed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        speed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(speed_frame, text="Kesme Hızı:", width=15).pack(side="left")
+        self.milling_torque_cutting_speed = ttk.Entry(speed_frame, width=15)
+        self.milling_torque_cutting_speed.pack(side="left", padx=(5, 0))
+        ttk.Label(speed_frame, text="m/dak").pack(side="left", padx=(2, 0))
+
+        # Feed per tooth input
+        feed_frame = ttk.Frame(frame, style="Calc.TFrame")
+        feed_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(feed_frame, text="Diş Başı İlerleme:", width=15).pack(side="left")
+        self.milling_torque_feed_per_tooth = ttk.Entry(feed_frame, width=15)
+        self.milling_torque_feed_per_tooth.pack(side="left", padx=(5, 0))
+        ttk.Label(feed_frame, text="mm/diş").pack(side="left", padx=(2, 0))
+
+        # Number of teeth input
+        teeth_frame = ttk.Frame(frame, style="Calc.TFrame")
+        teeth_frame.pack(fill="x", padx=5, pady=2)
+        ttk.Label(teeth_frame, text="Diş Sayısı:", width=15).pack(side="left")
+        self.milling_torque_num_teeth = ttk.Entry(teeth_frame, width=15)
+        self.milling_torque_num_teeth.pack(side="left", padx=(5, 0))
+        ttk.Label(teeth_frame, text="adet").pack(side="left", padx=(2, 0))
+
+        # Calculate button
+        ttk.Button(frame, text="Hesapla", command=self._calculate_milling_torque).pack(
+            pady=5
+        )
+
+        # Result display
+        self.milling_torque_result = ttk.Label(
+            frame, text="", font=("Arial", 10, "bold"), foreground="blue"
+        )
+        self.milling_torque_result.pack(pady=2)
+
+        # Inject to workspace button
+        ttk.Button(
+            frame, text="📝 Çalışma Alanına Ekle", command=self._inject_milling_torque
+        ).pack(pady=2)
 
     def _create_material_tab(self):
         """Create material calculations tab."""
@@ -349,29 +835,51 @@ class V3Calculator(ExecuteModeMixin):
         frame = ttk.LabelFrame(parent, text="Kütle Hesabı", style="Calc.TFrame")
         frame.pack(fill="x", padx=5, pady=5)
 
+        # Use cached shape data
+        shape_display_names = list(self.available_shapes_map.values())
+
         # Shape selection
         shape_frame = ttk.Frame(frame, style="Calc.TFrame")
         shape_frame.pack(fill="x", padx=5, pady=2)
         ttk.Label(shape_frame, text="Şekil:", width=15).pack(side="left")
-        self.mass_shape = ttk.Combobox(shape_frame, width=15, style="Calc.TCombobox")
+        self.mass_shape = ttk.Combobox(shape_frame, width=20, style="Calc.TCombobox")
         self.mass_shape.pack(side="left", padx=(5, 0))
-        self.mass_shape["values"] = ("circle", "rectangle", "tube", "sphere")
-        self.mass_shape.set("circle")
+        self.mass_shape["values"] = shape_display_names
+        if shape_display_names:
+            self.mass_shape.set(shape_display_names[0])  # Default to first shape
         self.mass_shape.bind("<<ComboboxSelected>>", self._update_mass_params)
 
         # Dynamic parameters frame
         self.mass_params_frame = ttk.Frame(frame, style="Calc.TFrame")
         self.mass_params_frame.pack(fill="x", padx=5, pady=5)
 
-        # Density input
+        # Material selection and density input
         density_frame = ttk.Frame(frame, style="Calc.TFrame")
         density_frame.pack(fill="x", padx=5, pady=2)
+
         ttk.Label(density_frame, text="Yoğunluk:", width=15).pack(side="left")
         self.mass_density = ttk.Entry(density_frame, width=15)
         self.mass_density.pack(side="left", padx=(5, 0))
         ttk.Label(density_frame, text="g/cm³").pack(side="left", padx=(2, 0))
 
-        # Initialize with circle parameters
+        # Material selection dropdown using cached data
+        self.mass_material = ttk.Combobox(
+            density_frame, values=self.material_names, state="readonly", width=15
+        )
+        self.mass_material.pack(side="left", padx=(10, 0))
+
+        def _on_material_select(event=None):
+            mat = self.mass_material.get()
+            if mat in self.material_densities:
+                self.mass_density.delete(0, "end")
+                self.mass_density.insert(0, str(self.material_densities[mat]))
+
+        self.mass_material.bind("<<ComboboxSelected>>", _on_material_select)
+        if self.material_names:
+            self.mass_material.set(self.material_names[0])
+            _on_material_select()
+
+        # Initialize with first shape parameters
         self._update_mass_params()
 
         # Calculate button
@@ -387,6 +895,306 @@ class V3Calculator(ExecuteModeMixin):
         ttk.Button(
             frame, text="📝 Çalışma Alanına Ekle", command=self._inject_mass
         ).pack(pady=2)
+
+    # Milling calculation methods
+    def _calculate_milling_table_feed(self):
+        """Calculate milling table feed."""
+        try:
+            feed_per_tooth = float(self.milling_feed_per_tooth.get())
+            num_teeth = float(self.milling_num_teeth.get())
+            rpm = float(self.milling_rpm.get())
+
+            result_dict = ec.calculate_milling(
+                "Table feed", feed_per_tooth, num_teeth, rpm
+            )
+            result = result_dict["value"]
+            self.milling_table_feed_result.config(text=f"Sonuç: {result:.2f} mm/dak")
+
+        except ValueError:
+            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
+
+    def _calculate_milling_cutting_speed(self):
+        """Calculate milling cutting speed."""
+        try:
+            diameter = float(self.milling_cutting_diameter.get())
+            rpm = float(self.milling_cutting_rpm.get())
+
+            result_dict = ec.calculate_milling("Cutting speed", diameter, rpm)
+            result = result_dict["value"]
+            self.milling_cutting_speed_result.config(text=f"Sonuç: {result:.2f} m/dak")
+
+        except ValueError:
+            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
+
+    def _calculate_milling_spindle_speed(self):
+        """Calculate milling spindle speed."""
+        try:
+            cutting_speed = float(self.milling_spindle_cutting_speed.get())
+            diameter = float(self.milling_spindle_diameter.get())
+
+            result_dict = ec.calculate_milling("Spindle speed", cutting_speed, diameter)
+            result = result_dict["value"]
+            self.milling_spindle_speed_result.config(text=f"Sonuç: {result:.0f} rpm")
+
+        except ValueError:
+            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
+
+    def _calculate_milling_feed_per_tooth(self):
+        """Calculate milling feed per tooth."""
+        try:
+            table_feed = float(self.milling_fz_table_feed.get())
+            num_teeth = float(self.milling_fz_num_teeth.get())
+            rpm = float(self.milling_fz_rpm.get())
+
+            result_dict = ec.calculate_milling(
+                "Feed per tooth", table_feed, num_teeth, rpm
+            )
+            result = result_dict["value"]
+            self.milling_feed_per_tooth_result.config(
+                text=f"Sonuç: {result:.3f} mm/diş"
+            )
+
+        except ValueError:
+            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
+
+    def _calculate_milling_feed_per_revolution(self):
+        """Calculate milling feed per revolution."""
+        try:
+            table_feed = float(self.milling_fn_table_feed.get())
+            rpm = float(self.milling_fn_rpm.get())
+
+            result_dict = ec.calculate_milling("Feed per revolution", table_feed, rpm)
+            result = result_dict["value"]
+            self.milling_feed_per_revolution_result.config(
+                text=f"Sonuç: {result:.3f} mm/dev"
+            )
+
+        except ValueError:
+            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
+
+    def _calculate_milling_mrr(self):
+        """Calculate milling metal removal rate."""
+        try:
+            cutting_speed = float(self.milling_mrr_cutting_speed.get())
+            feed_per_tooth = float(self.milling_mrr_feed_per_tooth.get())
+            num_teeth = float(self.milling_mrr_num_teeth.get())
+
+            result_dict = ec.calculate_milling(
+                "Metal removal rate", cutting_speed, feed_per_tooth, num_teeth
+            )
+            result = result_dict["value"]
+            self.milling_mrr_result.config(text=f"Sonuç: {result:.2f} cm³/dak")
+
+        except ValueError:
+            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
+
+    def _calculate_milling_net_power(self):
+        """Calculate milling net power."""
+        try:
+            cutting_speed = float(self.milling_power_cutting_speed.get())
+            feed_per_tooth = float(self.milling_power_feed_per_tooth.get())
+            num_teeth = float(self.milling_power_num_teeth.get())
+
+            result_dict = ec.calculate_milling(
+                "Net power", cutting_speed, feed_per_tooth, num_teeth
+            )
+            result = result_dict["value"]
+            self.milling_net_power_result.config(text=f"Sonuç: {result:.2f} kW")
+
+        except ValueError:
+            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
+
+    def _calculate_milling_torque(self):
+        """Calculate milling torque."""
+        try:
+            cutting_speed = float(self.milling_torque_cutting_speed.get())
+            feed_per_tooth = float(self.milling_torque_feed_per_tooth.get())
+            num_teeth = float(self.milling_torque_num_teeth.get())
+
+            result_dict = ec.calculate_milling(
+                "Torque", cutting_speed, feed_per_tooth, num_teeth
+            )
+            result = result_dict["value"]
+            self.milling_torque_result.config(text=f"Sonuç: {result:.2f} Nm")
+
+        except ValueError:
+            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
+
+    # Inject methods for milling calculations
+    def _inject_milling_table_feed(self):
+        """Inject milling table feed calculation into workspace."""
+        try:
+            feed_per_tooth = float(self.milling_feed_per_tooth.get())
+            num_teeth = float(self.milling_num_teeth.get())
+            rpm = float(self.milling_rpm.get())
+            result_dict = ec.calculate_milling(
+                "Table feed", feed_per_tooth, num_teeth, rpm
+            )
+            result = result_dict["value"]
+
+            self.workspace_editor.insert_calculation_result(
+                "Frezeleme Hesaplamaları",
+                "Tabla İlerlemesi",
+                {"fz": feed_per_tooth, "z": num_teeth, "n": rpm},
+                result,
+                "mm/dak",
+            )
+        except Exception:
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+    def _inject_milling_cutting_speed(self):
+        """Inject milling cutting speed calculation into workspace."""
+        try:
+            diameter = float(self.milling_cutting_diameter.get())
+            rpm = float(self.milling_cutting_rpm.get())
+            result_dict = ec.calculate_milling("Cutting speed", diameter, rpm)
+            result = result_dict["value"]
+
+            self.workspace_editor.insert_calculation_result(
+                "Frezeleme Hesaplamaları",
+                "Kesme Hızı",
+                {"D": diameter, "n": rpm},
+                result,
+                "m/dak",
+            )
+        except Exception:
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+    def _inject_milling_spindle_speed(self):
+        """Inject milling spindle speed calculation into workspace."""
+        try:
+            cutting_speed = float(self.milling_spindle_cutting_speed.get())
+            diameter = float(self.milling_spindle_diameter.get())
+            result_dict = ec.calculate_milling("Spindle speed", cutting_speed, diameter)
+            result = result_dict["value"]
+
+            self.workspace_editor.insert_calculation_result(
+                "Frezeleme Hesaplamaları",
+                "İş Mili Devri",
+                {"Vc": cutting_speed, "D": diameter},
+                result,
+                "rpm",
+            )
+        except Exception:
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+    def _inject_milling_feed_per_tooth(self):
+        """Inject milling feed per tooth calculation into workspace."""
+        try:
+            table_feed = float(self.milling_fz_table_feed.get())
+            num_teeth = float(self.milling_fz_num_teeth.get())
+            rpm = float(self.milling_fz_rpm.get())
+            result_dict = ec.calculate_milling(
+                "Feed per tooth", table_feed, num_teeth, rpm
+            )
+            result = result_dict["value"]
+
+            self.workspace_editor.insert_calculation_result(
+                "Frezeleme Hesaplamaları",
+                "Diş Başı İlerleme",
+                {"Vf": table_feed, "z": num_teeth, "n": rpm},
+                result,
+                "mm/diş",
+            )
+        except Exception:
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+    def _inject_milling_feed_per_revolution(self):
+        """Inject milling feed per revolution calculation into workspace."""
+        try:
+            table_feed = float(self.milling_fn_table_feed.get())
+            rpm = float(self.milling_fn_rpm.get())
+            result_dict = ec.calculate_milling("Feed per revolution", table_feed, rpm)
+            result = result_dict["value"]
+
+            self.workspace_editor.insert_calculation_result(
+                "Frezeleme Hesaplamaları",
+                "Devir Başı İlerleme",
+                {"Vf": table_feed, "n": rpm},
+                result,
+                "mm/dev",
+            )
+        except Exception:
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+    def _inject_milling_mrr(self):
+        """Inject milling metal removal rate calculation into workspace."""
+        try:
+            cutting_speed = float(self.milling_mrr_cutting_speed.get())
+            feed_per_tooth = float(self.milling_mrr_feed_per_tooth.get())
+            num_teeth = float(self.milling_mrr_num_teeth.get())
+            result_dict = ec.calculate_milling(
+                "Metal removal rate", cutting_speed, feed_per_tooth, num_teeth
+            )
+            result = result_dict["value"]
+
+            self.workspace_editor.insert_calculation_result(
+                "Frezeleme Hesaplamaları",
+                "Talaş Debisi",
+                {"Vc": cutting_speed, "fz": feed_per_tooth, "z": num_teeth},
+                result,
+                "cm³/dak",
+            )
+        except Exception:
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+    def _inject_milling_net_power(self):
+        """Inject milling net power calculation into workspace."""
+        try:
+            cutting_speed = float(self.milling_power_cutting_speed.get())
+            feed_per_tooth = float(self.milling_power_feed_per_tooth.get())
+            num_teeth = float(self.milling_power_num_teeth.get())
+            result_dict = ec.calculate_milling(
+                "Net power", cutting_speed, feed_per_tooth, num_teeth
+            )
+            result = result_dict["value"]
+
+            self.workspace_editor.insert_calculation_result(
+                "Frezeleme Hesaplamaları",
+                "Net Güç",
+                {"Vc": cutting_speed, "fz": feed_per_tooth, "z": num_teeth},
+                result,
+                "kW",
+            )
+        except Exception:
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+    def _inject_milling_torque(self):
+        """Inject milling torque calculation into workspace."""
+        try:
+            cutting_speed = float(self.milling_torque_cutting_speed.get())
+            feed_per_tooth = float(self.milling_torque_feed_per_tooth.get())
+            num_teeth = float(self.milling_torque_num_teeth.get())
+            result_dict = ec.calculate_milling(
+                "Torque", cutting_speed, feed_per_tooth, num_teeth
+            )
+            result = result_dict["value"]
+
+            self.workspace_editor.insert_calculation_result(
+                "Frezeleme Hesaplamaları",
+                "Tork",
+                {"Vc": cutting_speed, "fz": feed_per_tooth, "z": num_teeth},
+                result,
+                "Nm",
+            )
+        except Exception:
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
 
     def _create_drilling_tab(self):
         """Create drilling calculations tab."""
@@ -474,22 +1282,70 @@ class V3Calculator(ExecuteModeMixin):
         for widget in self.mass_params_frame.winfo_children():
             widget.destroy()
 
-        shape = self.mass_shape.get()
-        param_names = ec.get_shape_parameters(shape)
+        # Get Turkish shape name and convert to internal key
+        shape_turkish = self.mass_shape.get()
+        shape_key = self.reverse_shape_names.get(shape_turkish)
+
+        if not shape_key:
+            # Show error message in the parameters frame
+            error_frame = ttk.Frame(self.mass_params_frame, style="Calc.TFrame")
+            error_frame.pack(fill="x", pady=1)
+
+            error_label = ttk.Label(
+                error_frame,
+                text=f"Hata: {shape_turkish} şekli desteklenmiyor",
+                foreground="red",
+                font=("Arial", 9),
+            )
+            error_label.pack(side="left")
+            self.mass_param_widgets = {}
+            return
+
+        try:
+            param_names = ec.get_shape_parameters(shape_key)
+        except ValueError as e:
+            # Show error message in the parameters frame
+            error_frame = ttk.Frame(self.mass_params_frame, style="Calc.TFrame")
+            error_frame.pack(fill="x", pady=1)
+
+            error_label = ttk.Label(
+                error_frame,
+                text=f"Hata: {shape_turkish} şekli desteklenmiyor",
+                foreground="red",
+                font=("Arial", 9),
+            )
+            error_label.pack(side="left")
+            self.mass_param_widgets = {}
+            return
 
         self.mass_param_widgets = {}
+        self.current_shape_key = shape_key  # Store for calculation
 
         for param_name in param_names:
             frame = ttk.Frame(self.mass_params_frame, style="Calc.TFrame")
             frame.pack(fill="x", pady=1)
 
-            label_text = f"{param_name}:"
+            # Use cached Turkish display names
+            display_name = self.param_to_gui_key_map.get(
+                param_name,
+                ec.PARAM_TURKISH_NAMES.get(param_name, param_name.capitalize()),
+            )
+            label_text = f"{display_name}:"
             ttk.Label(frame, text=label_text, width=15).pack(side="left")
 
             entry = ttk.Entry(frame, width=15)
             entry.pack(side="left", padx=(5, 0))
 
             self.mass_param_widgets[param_name] = entry
+
+        # Add length parameter for all shapes except sphere
+        if shape_key != "sphere":
+            length_frame = ttk.Frame(self.mass_params_frame, style="Calc.TFrame")
+            length_frame.pack(fill="x", pady=1)
+            ttk.Label(length_frame, text="Uzunluk:", width=15).pack(side="left")
+            length_entry = ttk.Entry(length_frame, width=15)
+            length_entry.pack(side="left", padx=(5, 0))
+            self.mass_param_widgets["length"] = length_entry
 
     def _calculate_cutting_speed(self):
         """Calculate cutting speed."""
@@ -542,22 +1398,35 @@ class V3Calculator(ExecuteModeMixin):
     def _calculate_mass(self):
         """Calculate mass."""
         try:
-            shape = self.mass_shape.get()
+            shape_key = self.current_shape_key
             density = float(self.mass_density.get())
 
-            # Get shape parameters
-            params = {}
-            for param_name, entry in self.mass_param_widgets.items():
-                params[param_name] = float(entry.get())
+            # Get shape parameters in correct order
+            param_names = ec.get_shape_parameters(shape_key)
+            param_values = []
+
+            # Add shape parameters
+            for param_name in param_names:
+                if param_name in self.mass_param_widgets:
+                    param_values.append(
+                        float(self.mass_param_widgets[param_name].get())
+                    )
+                else:
+                    raise ValueError(f"Parameter {param_name} not found")
+
+            # Add length parameter for all shapes except sphere
+            if shape_key != "sphere" and "length" in self.mass_param_widgets:
+                param_values.append(float(self.mass_param_widgets["length"].get()))
 
             # Calculate mass using correct API
-            param_values = list(params.values())
-            result = ec.calculate_material_mass(shape, density, *param_values)
+            result = ec.calculate_material_mass(shape_key, density, *param_values)
 
             self.mass_result.config(text=f"Sonuç: {result:.2f} g")
 
-        except ValueError:
-            messagebox.showerror("Hata", "Lütfen geçerli sayısal değerler girin.")
+        except ValueError as e:
+            messagebox.showerror(
+                "Hata", f"Lütfen geçerli sayısal değerler girin: {str(e)}"
+            )
         except Exception as e:
             messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
 
@@ -789,6 +1658,7 @@ class V3Calculator(ExecuteModeMixin):
         """Refresh available models."""
         try:
             model_url = self.model_url_entry.get()
+            self.current_model_url = model_url
             self.ollama_models = get_available_models(model_url)
             self.model_selection_combo["values"] = self.ollama_models
 
@@ -836,6 +1706,100 @@ class V3Calculator(ExecuteModeMixin):
     def update_status_bar(self, message: str):
         """Update status bar message."""
         self.status_var.set(message)
+
+    def _handle_tab_navigation(self, event):
+        """Handle Tab key navigation between widgets."""
+        try:
+            # Get current focused widget
+            current = self.root.focus_get()
+            if current is None:
+                return event
+
+            # Get all focusable widgets
+            focusable_widgets = self._get_focusable_widgets()
+
+            if current in focusable_widgets:
+                current_index = focusable_widgets.index(current)
+                next_index = (current_index + 1) % len(focusable_widgets)
+                next_widget = focusable_widgets[next_index]
+                next_widget.focus_set()
+                return "break"  # Prevent default Tab behavior
+        except Exception:
+            pass
+
+        return event
+
+    def _handle_shift_tab_navigation(self, event):
+        """Handle Shift+Tab key navigation between widgets."""
+        try:
+            # Get current focused widget
+            current = self.root.focus_get()
+            if current is None:
+                return event
+
+            # Get all focusable widgets
+            focusable_widgets = self._get_focusable_widgets()
+
+            if current in focusable_widgets:
+                current_index = focusable_widgets.index(current)
+                prev_index = (current_index - 1) % len(focusable_widgets)
+                prev_widget = focusable_widgets[prev_index]
+                prev_widget.focus_set()
+                return "break"  # Prevent default Tab behavior
+        except Exception:
+            pass
+
+        return event
+
+    def _get_focusable_widgets(self):
+        """Get list of focusable widgets in order."""
+        widgets = []
+
+        # Add input fields from calculation tools
+        if hasattr(self, "vc_diameter"):
+            widgets.extend([self.vc_diameter, self.vc_rpm])
+        if hasattr(self, "n_cutting_speed"):
+            widgets.extend([self.n_cutting_speed, self.n_diameter])
+        if hasattr(self, "feed_per_tooth"):
+            widgets.extend([self.feed_per_tooth, self.num_teeth, self.feed_rpm])
+
+        # Add milling input fields
+        if hasattr(self, "milling_feed_per_tooth"):
+            widgets.extend(
+                [self.milling_feed_per_tooth, self.milling_num_teeth, self.milling_rpm]
+            )
+        if hasattr(self, "milling_cutting_diameter"):
+            widgets.extend([self.milling_cutting_diameter, self.milling_cutting_rpm])
+        if hasattr(self, "milling_spindle_cutting_speed"):
+            widgets.extend(
+                [self.milling_spindle_cutting_speed, self.milling_spindle_diameter]
+            )
+
+        # Add material input fields
+        if hasattr(self, "mass_shape"):
+            widgets.append(self.mass_shape)
+        if hasattr(self, "mass_density"):
+            widgets.append(self.mass_density)
+        if hasattr(self, "mass_material"):
+            widgets.append(self.mass_material)
+
+        # Add dynamic material parameter fields
+        if hasattr(self, "mass_param_widgets"):
+            widgets.extend(list(self.mass_param_widgets.values()))
+
+        # Add model configuration fields
+        if hasattr(self, "model_url_entry"):
+            widgets.append(self.model_url_entry)
+        if hasattr(self, "model_selection_combo"):
+            widgets.append(self.model_selection_combo)
+
+        # Add workspace editor text widget
+        if hasattr(self, "workspace_editor") and hasattr(
+            self.workspace_editor, "text_widget"
+        ):
+            widgets.append(self.workspace_editor.text_widget)
+
+        return widgets
         self.root.update_idletasks()
 
     def _apply_default_geometry(self):
