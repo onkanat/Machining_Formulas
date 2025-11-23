@@ -6,7 +6,8 @@ for model analysis of workspace data.
 
 from __future__ import annotations
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional, Any
+
 from workspace_manager import Workspace, CalculationEntry
 
 
@@ -29,7 +30,31 @@ class ContextBuilder:
         if not workspace.calculations:
             return base_context + "Bu çalışma alanında henüz hesaplama bulunmuyor."
 
-        workspace_context = workspace.get_full_context()
+        context = (
+            base_context
+            + "Çalışma Alanı İçeriği (Toplam {} hesaplama):\n\n".format(
+                len(workspace.calculations)
+            )
+        )
+
+        for i, calc in enumerate(workspace.calculations, 1):
+            context += f"HESAPLAMA #{i}:\n"
+            context += f"Tür: {calc.calc_type}\n"
+            context += f"İşlem: {calc.calculation_name}\n"
+            context += f"Parametreler: {calc.parameters}\n"
+            context += f"Sonuç: {calc.result} {calc.unit}\n"
+
+            if calc.user_notes:
+                context += f"Kullanıcı Notları:\n"
+                for note in calc.user_notes:
+                    context += f"  • {note}\n"
+
+            if calc.model_comments:
+                context += f"Model Yorumları:\n"
+                for comment in calc.model_comments:
+                    context += f"  • {comment}\n"
+
+            context += "\n" + "-" * 50 + "\n\n"
 
         analysis_prompt = (
             "Yukarıdaki çalışma alanını analiz et:\n"
@@ -41,29 +66,27 @@ class ContextBuilder:
             "Analiz sonuçlarını yapılandırılmış şekilde sun."
         )
 
-        return base_context + workspace_context + "\n\n" + analysis_prompt
+        return base_context + context + analysis_prompt
 
     def build_calculation_review_context(self, calculation: CalculationEntry) -> str:
         """Build context for single calculation review."""
         base_context = self.system_prompt + "\n\n"
 
-        calc_context = (
-            f"İncelenecek Hesaplama:\n"
-            f"Tür: {calculation.calc_type}\n"
-            f"İşlem: {calculation.calculation_name}\n"
-            f"Parametreler: {calculation.parameters}\n"
-            f"Sonuç: {calculation.result} {calculation.unit}\n"
-        )
+        context = base_context + f"İncelenecek Hesaplama:\n"
+        context += f"Tür: {calculation.calc_type}\n"
+        context += f"İşlem: {calculation.calculation_name}\n"
+        context += f"Parametreler: {calculation.parameters}\n"
+        context += f"Sonuç: {calculation.result} {calculation.unit}\n"
 
         if calculation.user_notes:
-            calc_context += "\nKullanıcı Notları:\n"
+            context += f"Kullanıcı Notları:\n"
             for note in calculation.user_notes:
-                calc_context += f"  - {note}\n"
+                context += f"  • {note}\n"
 
         if calculation.model_comments:
-            calc_context += "\nÖnceki Model Yorumları:\n"
+            context += f"Model Yorumları:\n"
             for comment in calculation.model_comments:
-                calc_context += f"  - {comment}\n"
+                context += f"  • {comment}\n"
 
         review_prompt = (
             "\nBu hesaplamayı detaylıca incele:\n"
@@ -72,58 +95,50 @@ class ContextBuilder:
             "3. Sonucun beklenen aralıkta olup olmadığı\n"
             "4. Pratik uygulamadaki geçerliliği\n"
             "5. Kullanıcı notlarına yanıt\n\n"
-            "Değerlendirmeni net ve yapıcı şekilde sun."
+            "Değerlendirmeni net ve yapılandırılmış şekilde sun."
         )
 
-        return base_context + calc_context + review_prompt
+        return base_context + context + review_prompt
 
     def build_general_review_context(self, workspace: Workspace) -> str:
-        """Build context for general workspace review."""
+        """Build general review context."""
         base_context = self.system_prompt + "\n\n"
 
         stats = self._get_workspace_stats(workspace)
-        stats_context = (
-            f"Çalışma Alanı Özeti:\n"
-            f"Toplam Hesaplama: {stats['total']}\n"
-            f"Hesaplama Türleri: {stats['types']}\n"
-            f"Son Güncelleme: {stats['last_updated']}\n\n"
-        )
+        context = base_context + f"Çalışma Alanı Özeti:\n"
+        context += f"Toplam Hesaplama: {stats['total']}\n"
+        context += f"Hesaplama Türleri: {stats['types']}\n"
+        context += f"Son Güncelleme: {stats['last_updated']}\n\n"
 
-        full_context = stats_context + workspace.get_full_context()
+        context += workspace.get_full_context()
 
         general_prompt = (
             "Bu çalışma alanının genel durumunu değerlendir:\n"
-            "1. Hesaplamalar arasındaki tutarlılık\n"
+            "1. Hesaplamalar arasındaki tutarlılığı\n"
             "2. Genel yaklaşımın doğruluğu\n"
             "3. Potansiyel eksiklikler veya iyileştirmeler\n"
             "4. Önerilen sonraki adımlar\n\n"
             "Genel değerlendirmeni sun."
         )
 
-        return base_context + full_context + "\n\n" + general_prompt
+        return base_context + context + general_prompt
 
     def build_comparison_context(self, calculations: List[CalculationEntry]) -> str:
-        """Build context for comparing multiple calculations."""
+        """Build comparison context for multiple calculations."""
         base_context = self.system_prompt + "\n\n"
 
         if len(calculations) < 2:
             return base_context + "Karşılaştırma için en az 2 hesaplama gerekli."
 
-        comparison_context = "Karşılaştırılacak Hesaplamalar:\n\n"
+        context = base_context + "Karşılaştırılacak Hesaplamalar:\n\n"
 
         for i, calc in enumerate(calculations, 1):
-            comparison_context += (
-                f"HESAPLAMA {i}:\n"
-                f"Tür: {calc.calc_type}\n"
-                f"İşlem: {calc.calculation_name}\n"
-                f"Parametreler: {calc.parameters}\n"
-                f"Sonuç: {calc.result} {calc.unit}\n"
-            )
-
-            if calc.user_notes:
-                comparison_context += "Notlar: " + "; ".join(calc.user_notes) + "\n"
-
-            comparison_context += "\n"
+            context += f"HESAPLAMA #{i}:\n"
+            context += f"Tür: {calc.calc_type}\n"
+            context += f"İşlem: {calc.calculation_name}\n"
+            context += f"Parametreler: {calc.parameters}\n"
+            context += f"Sonuç: {calc.result} {calc.unit}\n"
+            context += "\n"
 
         comparison_prompt = (
             "Bu hesaplamaları karşılaştır:\n"
@@ -134,7 +149,7 @@ class ContextBuilder:
             "Karşılaştırma sonuçlarını sun."
         )
 
-        return base_context + comparison_context + comparison_prompt
+        return base_context + context + comparison_prompt
 
     def build_validation_context(
         self,
@@ -144,18 +159,16 @@ class ContextBuilder:
         """Build context for calculation validation."""
         base_context = self.system_prompt + "\n\n"
 
-        validation_context = (
-            f"Doğrulanacak Hesaplama:\n"
-            f"Tür: {calculation.calc_type}\n"
-            f"İşlem: {calculation.calculation_name}\n"
-            f"Parametreler: {calculation.parameters}\n"
-            f"Sonuç: {calculation.result} {calculation.unit}\n"
-        )
+        context = base_context + f"Doğrulanacak Hesaplama:\n"
+        context += f"Tür: {calculation.calc_type}\n"
+        context += f"İşlem: {calculation.calculation_name}\n"
+        context += f"Parametreler: {calculation.parameters}\n"
+        context += f"Sonuç: {calculation.result} {calculation.unit}\n"
 
         if expected_range:
-            validation_context += "\nBeklenen Değer Aralıkları:\n"
+            context += "\nBeklenen Değer Aralıkları:\n"
             for param, (min_val, max_val) in expected_range.items():
-                validation_context += f"  {param}: {min_val} - {max_val}\n"
+                context += f"  {param}: {min_val} - {max_val}\n"
 
         validation_prompt = (
             "\nBu hesaplamayı doğrula:\n"
@@ -167,7 +180,45 @@ class ContextBuilder:
             "Doğrulama sonucunu belirt."
         )
 
-        return base_context + validation_context + validation_prompt
+        return base_context + context + validation_prompt
+
+    def build_edit_context_for_changes(
+        self, workspace, calc_id: str, changes: Dict[str, Any]
+    ) -> str:
+        """Build context for calculation editing with specific changes."""
+        base_context = self.system_prompt + "\n\n"
+
+        calculation = workspace.get_calculation(calc_id)
+        if not calculation:
+            return base_context + "Hesaplama bulunamadı."
+
+        edit_context = (
+            f"Kullanıcı şu hesaplamayı düzenledi:\n"
+            f"HESAPLAMA ID: {calc_id}\n"
+            f"Tür: {calculation.calc_type}\n"
+            f"İşlem: {calculation.calculation_name}\n"
+            f"Önceki Parametreler: {calculation.parameters}\n"
+            f"Önceki Sonuç: {calculation.result} {calculation.unit}\n"
+            f"Yapılan Değişiklikler:\n"
+        )
+
+        for param, new_value in changes.items():
+            old_value = calculation.parameters.get(param)
+            if old_value is not None:
+                edit_context += f"  {param}: {old_value} → {new_value}\n"
+            else:
+                edit_context += f"  {param}: → {new_value} (yeni)\n"
+
+        edit_prompt = (
+            "\nLütfen bu düzenlemeyi analiz et:\n"
+            "1. Değişikliklerin mantıklı olup olmadığını kontrol et\n"
+            "2. Mühendislik formüllerine uygunluğunu değerlendir\n"
+            "3. Sonuçların tutarlılığını kontrol et\n"
+            "4. Gerekli düzeltmeleri öner\n"
+            "5. Analiz sonucunu net şekilde sun."
+        )
+
+        return base_context + edit_context + edit_prompt
 
     def _get_workspace_stats(self, workspace: Workspace) -> Dict[str, Any]:
         """Get workspace statistics for context building."""

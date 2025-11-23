@@ -648,9 +648,142 @@ class V2Calculator(ExecuteModeMixin):
 
             self.update_status_bar("Model analizi isteniyor...")
 
+            response = self.ollama_utils.send_chat_request(
+                self.current_model_url, self.current_model_name, context, timeout=60
+            )
+
+            messagebox.showinfo("Analiz Sonucu", response)
+            self.update_status_bar("Analiz tamamlandı")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Analiz sırasında hata: {str(e)}")
+            self.update_status_bar("Analiz başarısız")
+
+        """Handle model analysis request."""
+        if not self.current_model_name or not self.current_model_url:
+            messagebox.showwarning(
+                "Uyarı", "Lütfen önce model URL'sini ve model seçin."
+            )
+            return
+
+        try:
+            if calc_id:
+                # Single calculation analysis
+                calculation = self.workspace_manager.get_calculation(calc_id)
+                if not calculation:
+                    messagebox.showerror("Hata", "Hesaplama bulunamadı.")
+                    return
+
+                context = self.context_builder.build_calculation_review_context(
+                    calculation
+                )
+            else:
+                # General workspace analysis
+                context = self.context_builder.build_general_review_context(
+                    self.workspace_manager.workspace
+                )
+
+            self.update_status_bar("Model analizi isteniyor...")
+
             # Request analysis
             response = analyze_workspace_request(
                 self.current_model_url, self.current_model_name, context, timeout=60
+            )
+
+            # Add model comment
+            if calc_id:
+                self.workspace_manager.add_model_comment(calc_id, response)
+                self.workspace_display.update_calculation_card(calc_id)
+            else:
+                # For general analysis, we could show in a dialog or add as general comment
+                messagebox.showinfo("Genel Analiz", response)
+
+            self.update_status_bar("Model analizi tamamlandı")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Model analizi sırasında hata: {str(e)}")
+            self.update_status_bar("Model analizi başarısız")
+        """Handle model analysis request."""
+        if not self.current_model_name or not self.current_model_url:
+            messagebox.showwarning(
+                "Uyarı", "Lütfen önce model URL'sini ve model seçin."
+            )
+            return
+
+        try:
+            if calc_id:
+                # Single calculation analysis
+                calculation = self.workspace_manager.get_calculation(calc_id)
+                if not calculation:
+                    messagebox.showerror("Hata", "Hesaplama bulunamadı")
+                    return
+
+                context = self.context_builder.build_calculation_review_context(
+                    calculation
+                )
+            else:
+                # General workspace analysis
+                context = self.context_builder.build_general_review_context(
+                    self.workspace_manager.workspace
+                )
+
+            self.update_status_bar("Model analizi isteniyor...")
+
+            # Request analysis
+            response = analyze_workspace_request(
+                self.current_model_url,
+                self.current_model_name,
+                context,
+                use_generate=True,  # Use generate endpoint
+                timeout=60,
+            )
+
+            # Add model comment
+            if calc_id:
+                self.workspace_manager.add_model_comment(calc_id, response)
+                self.workspace_display.update_calculation_card(calc_id)
+            else:
+                # For general analysis, we could show in a dialog or add as general comment
+                messagebox.showinfo("Genel Analiz", response)
+
+            self.update_status_bar("Model analizi tamamlandı")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Model analizi sırasında hata: {str(e)}")
+            self.update_status_bar("Model analizi başarısız")
+        """Handle model analysis request."""
+        if not self.current_model_name or not self.current_model_url:
+            messagebox.showwarning(
+                "Uyarı", "Lütfen önce model URL'sini ve model seçin."
+            )
+            return
+
+        try:
+            if calc_id:
+                # Single calculation analysis
+                calculation = self.workspace_manager.get_calculation(calc_id)
+                if not calculation:
+                    messagebox.showerror("Hata", "Hesaplama bulunamadı")
+                    return
+
+                context = self.context_builder.build_calculation_review_context(
+                    calculation
+                )
+            else:
+                # General workspace analysis
+                context = self.context_builder.build_general_review_context(
+                    self.workspace_manager.workspace
+                )
+
+            self.update_status_bar("Model analizi isteniyor...")
+
+            # Request analysis
+            response = analyze_workspace_request(
+                self.current_model_url,
+                self.current_model_name,
+                context,
+                use_generate=True,  # Use generate endpoint
+                timeout=60,
             )
 
             # Add model comment

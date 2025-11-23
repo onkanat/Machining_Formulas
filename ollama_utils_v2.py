@@ -162,6 +162,28 @@ def analyze_workspace_request(
         raise
 
 
+def generate_request_with_context(
+    model_url: str, model_name: str, context: str, timeout: int = 60
+) -> str:
+    """Send generate request with context to model."""
+    try:
+        return single_generate_request(model_url, model_name, context, timeout)
+    except Exception as e:
+        logging.error(f"Generate request failed: {e}")
+        raise
+
+
+def generate_request_with_context(
+    model_url: str, model_name: str, context: str, timeout: int = 60
+) -> str:
+    """Send generate request with context to model."""
+    try:
+        return single_generate_request(model_url, model_name, context, timeout)
+    except Exception as e:
+        logging.error(f"Generate request failed: {e}")
+        raise
+
+
 def build_v2_tools_definition(
     calculator: EngineeringCalculator,
 ) -> List[Dict[str, Any]]:

@@ -123,6 +123,15 @@ class Workspace:
             return True
         return False
 
+    def edit_calculation(self, calc_id: str, new_params: Dict[str, Any]) -> bool:
+        """Edit calculation parameters. Returns True if successful."""
+        for calc in self.calculations:
+            if calc.id == calc_id:
+                calc.parameters = new_params
+                self.last_updated = datetime.now()
+                return True
+        return False
+
     def remove_calculation(self, calc_id: str) -> bool:
         """Remove calculation by ID. Returns True if successful."""
         for i, calc in enumerate(self.calculations):
@@ -226,6 +235,10 @@ class WorkspaceManager:
     def add_model_comment(self, calc_id: str, comment: str) -> bool:
         """Add model comment to calculation."""
         return self.workspace.add_model_comment(calc_id, comment)
+
+    def edit_calculation(self, calc_id: str, new_params: Dict[str, Any]) -> bool:
+        """Edit calculation parameters."""
+        return self.workspace.edit_calculation(calc_id, new_params)
 
     def remove_calculation(self, calc_id: str) -> bool:
         """Remove calculation."""
