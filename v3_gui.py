@@ -68,6 +68,9 @@ class V3Calculator(ExecuteModeMixin):
 
         # Setup UI
         self.setup_ui()
+
+        # Force UI update before geometry calculations
+        self.root.update_idletasks()
         self._apply_default_geometry()
 
         # Initialize model connection
@@ -100,23 +103,10 @@ class V3Calculator(ExecuteModeMixin):
         self.root.title("🔧 Mühendislik Hesaplayıcı V3 - Çalışma Alanı")
         self.root.geometry(f"{DEFAULT_WINDOW_SIZE[0]}x{DEFAULT_WINDOW_SIZE[1]}")
 
-        # Configure focus and keyboard handling
-        self.root.focus_set()
-
-        # Enable proper focus traversal
-        self.root.tk.call("tkwait", "visibility", self.root)
-
-        # Bind Tab key for navigation
-        self.root.bind("<Tab>", self._handle_tab_navigation)
-        self.root.bind("<Shift-Tab>", self._handle_shift_tab_navigation)
-
-        # Bind mouse click to ensure focus
-        self.root.bind("<Button-1>", self._handle_root_click)
-
-        # Configure styles
+        # Configure styles first (before creating widgets)
         self._setup_styles()
 
-        # Create main layout
+        # Create main layout first
         self._create_main_layout()
 
         # Create menu bar
@@ -125,8 +115,32 @@ class V3Calculator(ExecuteModeMixin):
         # Create status bar
         self._create_status_bar()
 
+        # Configure focus and keyboard handling after widgets are created
+        self.root.focus_set()
+
+        # Enable proper focus traversal (after widgets are created)
+        try:
+            self.root.tk.call("tkwait", "visibility", self.root)
+        except:
+            # Fallback for systems that don't support tkwait
+            pass
+
+        # Bind Tab key for navigation (after widgets are created)
+        self.root.after(100, self._setup_navigation_bindings)
+
         # Setup focus management after all widgets are created
-        # self.root.after(1000, self._setup_focus_management)
+        self.root.after(1000, self._setup_focus_management)
+
+    def _setup_navigation_bindings(self):
+        """Setup navigation bindings after widgets are created."""
+        try:
+            # Bind Tab key for navigation
+            self.root.bind("<Tab>", self._handle_tab_navigation)
+            self.root.bind("<Shift-Tab>", self._handle_shift_tab_navigation)
+            # Bind mouse click to ensure focus
+            self.root.bind("<Button-1>", self._handle_root_click)
+        except Exception:
+            pass  # Ignore binding errors
 
     def _setup_focus_management(self):
         """Setup focus management for better keyboard/mouse interaction."""
@@ -230,7 +244,7 @@ class V3Calculator(ExecuteModeMixin):
         main_container = ttk.Frame(self.root, style="Calc.TFrame")
         main_container.pack(fill="both", expand=True)
 
-        # Create horizontal paned window
+        # Create horizontal paned window with explicit sizing
         self.paned_window = ttk.PanedWindow(main_container, orient="horizontal")
         self.paned_window.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -239,6 +253,9 @@ class V3Calculator(ExecuteModeMixin):
 
         # Right panel - Workspace editor
         self._create_workspace_panel()
+
+        # Force final update after panels are added
+        self.paned_window.update_idletasks()
 
     def _create_calculation_panel(self):
         """Create calculation tools panel."""
@@ -257,7 +274,7 @@ class V3Calculator(ExecuteModeMixin):
         model_frame = ttk.LabelFrame(
             calc_frame, text="🤖 Model Yapılandırması", style="Calc.TFrame"
         )
-        model_frame.pack(fill="x", padx=5, pady=5)
+        model_frame.pack(fill="x", expand=True, padx=5, pady=5)
 
         # Model URL
         url_frame = ttk.Frame(model_frame, style="Calc.TFrame")
@@ -454,12 +471,15 @@ class V3Calculator(ExecuteModeMixin):
         )
         scrollable_frame = ttk.Frame(canvas, style="Calc.TFrame")
 
-        scrollable_frame.bind(
-            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
+        # Configure canvas scrolling
+        def configure_scroll_region(event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
 
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        scrollable_frame.bind("<Configure>", configure_scroll_region)
         canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Create window in canvas
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 
         # Add milling calculations
         self._create_milling_table_feed_calc(scrollable_frame)
@@ -471,6 +491,11 @@ class V3Calculator(ExecuteModeMixin):
         self._create_milling_net_power_calc(scrollable_frame)
         self._create_milling_torque_calc(scrollable_frame)
 
+        # Update scroll region after adding all content
+        scrollable_frame.update_idletasks()
+        configure_scroll_region()
+
+        # Pack canvas and scrollbar
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
@@ -833,7 +858,7 @@ class V3Calculator(ExecuteModeMixin):
     def _create_mass_calc(self, parent):
         """Create mass calculation."""
         frame = ttk.LabelFrame(parent, text="Kütle Hesabı", style="Calc.TFrame")
-        frame.pack(fill="x", padx=5, pady=5)
+        frame.pack(fill="x", expand=True, padx=5, pady=5)
 
         # Use cached shape data
         shape_display_names = list(self.available_shapes_map.values())
@@ -851,7 +876,7 @@ class V3Calculator(ExecuteModeMixin):
 
         # Dynamic parameters frame
         self.mass_params_frame = ttk.Frame(frame, style="Calc.TFrame")
-        self.mass_params_frame.pack(fill="x", padx=5, pady=5)
+        self.mass_params_frame.pack(fill="x", expand=True, padx=5, pady=5)
 
         # Material selection and density input
         density_frame = ttk.Frame(frame, style="Calc.TFrame")
@@ -1040,161 +1065,303 @@ class V3Calculator(ExecuteModeMixin):
     def _inject_milling_table_feed(self):
         """Inject milling table feed calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(
+                self, "milling_table_feed_result"
+            ) or not self.milling_table_feed_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.milling_table_feed_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             feed_per_tooth = float(self.milling_feed_per_tooth.get())
             num_teeth = float(self.milling_num_teeth.get())
             rpm = float(self.milling_rpm.get())
-            result_dict = ec.calculate_milling(
-                "Table feed", feed_per_tooth, num_teeth, rpm
-            )
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Frezeleme Hesaplamaları",
                 "Tabla İlerlemesi",
                 {"fz": feed_per_tooth, "z": num_teeth, "n": rpm},
-                result,
+                result_value,
                 "mm/dak",
             )
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_milling_cutting_speed(self):
         """Inject milling cutting speed calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(
+                self, "milling_cutting_speed_result"
+            ) or not self.milling_cutting_speed_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.milling_cutting_speed_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             diameter = float(self.milling_cutting_diameter.get())
             rpm = float(self.milling_cutting_rpm.get())
-            result_dict = ec.calculate_milling("Cutting speed", diameter, rpm)
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Frezeleme Hesaplamaları",
                 "Kesme Hızı",
                 {"D": diameter, "n": rpm},
-                result,
+                result_value,
                 "m/dak",
             )
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_milling_spindle_speed(self):
         """Inject milling spindle speed calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(
+                self, "milling_spindle_speed_result"
+            ) or not self.milling_spindle_speed_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.milling_spindle_speed_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             cutting_speed = float(self.milling_spindle_cutting_speed.get())
             diameter = float(self.milling_spindle_diameter.get())
-            result_dict = ec.calculate_milling("Spindle speed", cutting_speed, diameter)
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Frezeleme Hesaplamaları",
                 "İş Mili Devri",
                 {"Vc": cutting_speed, "D": diameter},
-                result,
+                result_value,
                 "rpm",
             )
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_milling_feed_per_tooth(self):
         """Inject milling feed per tooth calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(
+                self, "milling_feed_per_tooth_result"
+            ) or not self.milling_feed_per_tooth_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.milling_feed_per_tooth_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             table_feed = float(self.milling_fz_table_feed.get())
             num_teeth = float(self.milling_fz_num_teeth.get())
             rpm = float(self.milling_fz_rpm.get())
-            result_dict = ec.calculate_milling(
-                "Feed per tooth", table_feed, num_teeth, rpm
-            )
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Frezeleme Hesaplamaları",
                 "Diş Başı İlerleme",
                 {"Vf": table_feed, "z": num_teeth, "n": rpm},
-                result,
+                result_value,
                 "mm/diş",
             )
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_milling_feed_per_revolution(self):
         """Inject milling feed per revolution calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(
+                self, "milling_feed_per_revolution_result"
+            ) or not self.milling_feed_per_revolution_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.milling_feed_per_revolution_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             table_feed = float(self.milling_fn_table_feed.get())
             rpm = float(self.milling_fn_rpm.get())
-            result_dict = ec.calculate_milling("Feed per revolution", table_feed, rpm)
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Frezeleme Hesaplamaları",
                 "Devir Başı İlerleme",
                 {"Vf": table_feed, "n": rpm},
-                result,
+                result_value,
                 "mm/dev",
             )
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_milling_mrr(self):
         """Inject milling metal removal rate calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(
+                self, "milling_mrr_result"
+            ) or not self.milling_mrr_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.milling_mrr_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             cutting_speed = float(self.milling_mrr_cutting_speed.get())
             feed_per_tooth = float(self.milling_mrr_feed_per_tooth.get())
             num_teeth = float(self.milling_mrr_num_teeth.get())
-            result_dict = ec.calculate_milling(
-                "Metal removal rate", cutting_speed, feed_per_tooth, num_teeth
-            )
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Frezeleme Hesaplamaları",
                 "Talaş Debisi",
                 {"Vc": cutting_speed, "fz": feed_per_tooth, "z": num_teeth},
-                result,
+                result_value,
                 "cm³/dak",
             )
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_milling_net_power(self):
         """Inject milling net power calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(
+                self, "milling_net_power_result"
+            ) or not self.milling_net_power_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.milling_net_power_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             cutting_speed = float(self.milling_power_cutting_speed.get())
             feed_per_tooth = float(self.milling_power_feed_per_tooth.get())
             num_teeth = float(self.milling_power_num_teeth.get())
-            result_dict = ec.calculate_milling(
-                "Net power", cutting_speed, feed_per_tooth, num_teeth
-            )
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Frezeleme Hesaplamaları",
                 "Net Güç",
                 {"Vc": cutting_speed, "fz": feed_per_tooth, "z": num_teeth},
-                result,
+                result_value,
                 "kW",
             )
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_milling_torque(self):
         """Inject milling torque calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(
+                self, "milling_torque_result"
+            ) or not self.milling_torque_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.milling_torque_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             cutting_speed = float(self.milling_torque_cutting_speed.get())
             feed_per_tooth = float(self.milling_torque_feed_per_tooth.get())
             num_teeth = float(self.milling_torque_num_teeth.get())
-            result_dict = ec.calculate_milling(
-                "Torque", cutting_speed, feed_per_tooth, num_teeth
-            )
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Frezeleme Hesaplamaları",
                 "Tork",
                 {"Vc": cutting_speed, "fz": feed_per_tooth, "z": num_teeth},
-                result,
+                result_value,
                 "Nm",
             )
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _create_drilling_tab(self):
         """Create drilling calculations tab."""
@@ -1347,6 +1514,9 @@ class V3Calculator(ExecuteModeMixin):
             length_entry.pack(side="left", padx=(5, 0))
             self.mass_param_widgets["length"] = length_entry
 
+        # Force update after all parameter widgets are created
+        self.mass_params_frame.update_idletasks()
+
     def _calculate_cutting_speed(self):
         """Calculate cutting speed."""
         try:
@@ -1433,66 +1603,130 @@ class V3Calculator(ExecuteModeMixin):
     def _inject_cutting_speed(self):
         """Inject cutting speed calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(self, "vc_result") or not self.vc_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.vc_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             diameter = float(self.vc_diameter.get())
             rpm = float(self.vc_rpm.get())
-            result_dict = ec.calculate_turning("Cutting speed", diameter, rpm)
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Tornalama Hesaplamaları",
                 "Kesme Hızı",
                 {"Dm": diameter, "n": rpm},
-                result,
+                result_value,
                 "m/dak",
             )
 
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_spindle_speed(self):
         """Inject spindle speed calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(self, "n_result") or not self.n_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.n_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             cutting_speed = float(self.n_cutting_speed.get())
             diameter = float(self.n_diameter.get())
-            result_dict = ec.calculate_turning("Spindle speed", cutting_speed, diameter)
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Tornalama Hesaplamaları",
                 "İş Mili Hızı",
                 {"Vc": cutting_speed, "Dm": diameter},
-                result,
+                result_value,
                 "rpm",
             )
 
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_feed_rate(self):
         """Inject feed rate calculation into workspace."""
         try:
+            # Check if calculation has been performed
+            if not hasattr(self, "feed_result") or not self.feed_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.feed_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             feed_per_tooth = float(self.feed_per_tooth.get())
             num_teeth = float(self.num_teeth.get())
             rpm = float(self.feed_rpm.get())
-            result_dict = ec.calculate_milling(
-                "Table feed", feed_per_tooth, num_teeth, rpm
-            )
-            result = result_dict["value"]
 
             self.workspace_editor.insert_calculation_result(
                 "Frezeleme Hesaplamaları",
                 "Besleme Oranı",
                 {"fz": feed_per_tooth, "z": num_teeth, "n": rpm},
-                result,
+                result_value,
                 "mm/dak",
             )
 
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _inject_mass(self):
         """Inject mass calculation into workspace."""
         try:
+            # Check if calculation has been performed by checking if result exists
+            if not hasattr(self, "mass_result") or not self.mass_result.cget("text"):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Get calculation result
+            result_text = self.mass_result.cget("text")
+            if not result_text or "Sonuç:" not in result_text:
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
+            # Extract result value
+            try:
+                result_value = float(result_text.split(":")[1].strip().split()[0])
+            except (IndexError, ValueError):
+                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+                return
+
             shape = self.mass_shape.get()
             density = float(self.mass_density.get())
 
@@ -1501,20 +1735,16 @@ class V3Calculator(ExecuteModeMixin):
             for param_name, entry in self.mass_param_widgets.items():
                 params[param_name] = float(entry.get())
 
-            # Calculate mass using correct API
-            param_values = list(params.values())
-            result = ec.calculate_material_mass(shape, density, *param_values)
-
             self.workspace_editor.insert_calculation_result(
                 "Malzeme Hesaplamaları",
                 "Kütle Hesabı",
                 {"shape": shape, "density": density, **params},
-                result,
+                result_value,
                 "g",
             )
 
-        except Exception:
-            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
 
     def _handle_model_suggestion(self, context: str):
         """Handle model suggestion request."""
@@ -1538,7 +1768,7 @@ class V3Calculator(ExecuteModeMixin):
             # Add as suggestion to workspace
             current_content = self.workspace_editor.get_current_content()
             suggestion = self.workspace_buffer.suggest_edit(
-                0, len(current_content), response, "Model suggestion"
+                0, len(current_content), str(response)
             )
 
             self.workspace_editor._show_suggestions()
@@ -1568,7 +1798,7 @@ class V3Calculator(ExecuteModeMixin):
                 self.current_model_url, self.current_model_name, context, timeout=60
             )
 
-            messagebox.showinfo("Çalışma Alanı Analizi", response)
+            messagebox.showinfo("Çalışma Alanı Analizi", str(response))
             self.update_status_bar("Analiz tamamlandı")
 
         except Exception as e:
@@ -1797,10 +2027,9 @@ class V3Calculator(ExecuteModeMixin):
         if hasattr(self, "workspace_editor") and hasattr(
             self.workspace_editor, "text_widget"
         ):
-            widgets.append(self.workspace_editor.text_widget)
+            widgets.append(self.workspace_editor.text_editor)
 
         return widgets
-        self.root.update_idletasks()
 
     def _apply_default_geometry(self):
         """Apply default window geometry."""
@@ -1814,28 +2043,27 @@ class V3Calculator(ExecuteModeMixin):
 
 def main():
     """Main entry point for V3 GUI."""
-    root = tk.Tk()
-
-    # Load tooltips
     try:
-        with open("tooltips.json", "r", encoding="utf-8") as f:
-            tooltips = json.load(f)
-    except FileNotFoundError:
-        tooltips = {}
+        root = tk.Tk()
 
-    # Create V3 GUI
-    app = V3Calculator(root, tooltips)
+        # Load tooltips
+        try:
+            with open("tooltips.json", "r", encoding="utf-8") as f:
+                tooltips = json.load(f)
+        except FileNotFoundError:
+            tooltips = {}
 
-    # Handle model selection changes
-    def on_model_select(event=None):
-        app.current_model_name = app.model_selection_combo.get()
-        app.current_model_url = app.model_url_entry.get()
+        # Create V3 GUI instance
+        app = V3Calculator(root, tooltips)
 
-    app.model_selection_combo.bind("<<ComboboxSelected>>", on_model_select)
-    app.model_url_entry.bind("<FocusOut>", on_model_select)
+        # Start GUI
+        root.mainloop()
 
-    # Start GUI
-    root.mainloop()
+    except Exception as e:
+        print(f"V3 GUI başlatma hatası: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
