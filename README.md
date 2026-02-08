@@ -1,19 +1,97 @@
-# Machining Formulas - V2 Single Page Workspace System  
+# Machining Formulas (V3) — Turning/Milling + Material Mass + (Opsiyonel) Ollama
+
+Bu depo; tornalama ve frezeleme için temel talaşlı imalat formüllerini, ayrıca şekle bağlı malzeme kütlesi hesabını sunar. Güncel uygulama Tkinter tabanlı **V3 GUI** ile gelir ve giriş noktası **`python -m machining_formulas`**’dır.
+
+## 🚀 Hızlı Başlangıç
+
+- Python: 3.10+
+- Kurulum: `requirements.txt` + proje paketi kurulumu
+- Çalıştırma (V3 GUI): `python -m machining_formulas`
+
+### Ollama (opsiyonel)
+
+V3 arayüzünde Ollama URL ve model seçimi yapılabilir. Varsayılan istekler genellikle:
+
+- `.../api/tags` (model listesi)
+- `.../api/chat` (sohbet)
+
+> Not: Depoda `/v1/*` (OpenAI-uyumlu) uç noktaları için de yardımcı fonksiyonlar ve fallback mantığı bulunur.
+
+### 🧠 Tool-calling (Araç Çağrısı) örnekleri
+
+V3 GUI içindeki sohbet alanına bir hesap sorusu yazdığınızda uygulama, yanıtı **metin olarak uydurmak** yerine çoğu durumda bir “tool” (fonksiyon) çağrısı yaptırarak sonucu doğrudan hesaplatır.
+
+Bu tool isimlerini sizin yazmanız gerekmez; amaç, **hangi tip soruların araç çağrısına dönüştüğünü** görünür kılmaktır. Örnekler:
+
+1) Tornalama – Kesme hızı ($Vc$)
+   - Kullanıcı sorusu: “Çap 50 mm, 1000 rpm iken kesme hızı nedir?”
+   - İçeride çağrılan tool:
+
+```json
+{ "name": "calculate_turning_cutting_speed", "arguments": { "Dm": 50, "n": 1000 } }
+```
+
+2) Tornalama – Net güç ($Pc$)
+   - Kullanıcı sorusu: “Vc=180 m/min, ap=3 mm, fn=0.2 mm/rev, kc=2000 N/mm² için net güç?”
+   - İçeride çağrılan tool:
+
+```json
+{ "name": "calculate_turning_net_power", "arguments": { "Vc": 180, "ap": 3, "fn": 0.2, "kc": 2000 } }
+```
+
+3) Frezeleme – Tabla ilerlemesi ($Vf$)
+   - Kullanıcı sorusu: “fz=0.10 mm, n=1200 rpm, ZEFF=4 için tabla ilerlemesi kaç mm/dak?”
+   - İçeride çağrılan tool:
+
+```json
+{ "name": "calculate_milling_table_feed", "arguments": { "fz": 0.1, "n": 1200, "ZEFF": 4 } }
+```
+
+4) Frezeleme – Tork ($M$)
+   - Kullanıcı sorusu: “Pc=3 kW ve n=1600 rpm ise tork nedir?”
+   - İçeride çağrılan tool:
+
+```json
+{ "name": "calculate_milling_torque", "arguments": { "Pc": 3, "n": 1600 } }
+```
+
+5) Malzeme kütlesi (şekil + yoğunluk)
+   - Kullanıcı sorusu: “Yarıçap 25 mm, uzunluk 200 mm, yoğunluk 7.8 g/cm³ olan dairesel malzemenin kütlesi?”
+   - İçeride çağrılan tool:
+
+```json
+{ "name": "calculate_material_mass", "arguments": { "shape_key": "circle", "density": 7.8, "length": 200, "radius": 25 } }
+```
+
+> İpucu: Tool-calling’in doğru çalışması için soruda birimleriyle birlikte değerleri (mm, rpm, m/min, kW…) belirtmek en iyi sonucu verir.
+
+### `src/` layout notu
+
+Bu repo `src/` layout kullanır. Bu yüzden `python -m machining_formulas` çalıştırmadan önce proje paketini kurmanız gerekir.
+
+- Geliştirme (önerilen): `pip install -e .`
+- Alternatif: `pip install .`
+- Alternatif (kurulum yapmadan): `PYTHONPATH=src python -m machining_formulas`
+
+### Test
+
+- Pytest: `pytest tests/`  
+   (Repo `src/` layout kullandığı için, bazı ortamlarda `PYTHONPATH=.` ile çalıştırmak daha sorunsuz olabilir.)
 
 When machining in lathes, turning centers, or multi-task machines, calculating the correct values for different machining parameters like cutting speed and spindle speed is a crucial factor for good results. In this section, you will find the formulas and definitions needed for general turning.
 
 | metric |      | imperial |  
 |----|----|----|
 |Cutting speed $vc (m/min)$|      |Cutting speed $vc (ft/min)$|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/cutting-speed-m_jpg.webp)|     |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/cutting-speed-i_jpg.webp)|  
+|![Alt text](images/cutting-speed-m_jpg.webp)|     |![Alt text](images/cutting-speed-i_jpg.webp)|  
 |Spindle speed $n (rpm)$|      |Spindle speed $n (rpm)$|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/spindle-speed-m_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/spindle-speed-i_jpg.webp)|  
+|![Alt text](images/spindle-speed-m_jpg.webp)|      |![Alt text](images/spindle-speed-i_jpg.webp)|  
 |Metal removal rate $Q(cm^3/min)$|      |Metal removal rate $Q(cm^3/min)$|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/metal-removal-m_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/metal-removal-i_jpg.webp)|  
+|![Alt text](images/metal-removal-m_jpg.webp)|      |![Alt text](images/metal-removal-i_jpg.webp)|  
 |Net power $Pc(kW)$|      |Net power $Pc(HP)$|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/net-power-m_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/net-power-i_jpg.webp)|  
+|![Alt text](images/net-power-m_jpg.webp)|      |![Alt text](images/net-power-i_jpg.webp)|  
 |Machining time $Tc(min)$|      |Machining time $Tc(min)$|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/machining-time-m_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/machining-time-m_jpg.webp)|  
+|![Alt text](images/machining-time-m_jpg.webp)|      |![Alt text](images/machining-time-m_jpg.webp)|  
 
 |Symbol |Designation/definition |Unit, metric |(imperial)|  
 |--|--|--|--|
@@ -39,131 +117,45 @@ Here you will find a collection of good to have milling formulas and definitions
 | metric |      | imperial |  
 |------|--------|------|  
 |Table feed, $v(mm/min)$|       |Table feed, $(inch/min)$|
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/tablefeedmm_jpg.webp)|       |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/tablefeedinch_jpg.webp) |  
+|![Alt text](images/tablefeedmm_jpg.webp)|       |![Alt text](images/tablefeedinch_jpg.webp) |  
 |Cutting speed, $(m/min)$|      |Cutting speed, $(ft/min)$|
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/cuttingspeedm_jpg.webp)||![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/cuttingspeed_jpg.webp)|
+|![Alt text](images/cuttingspeedm_jpg.webp)||![Alt text](images/cuttingspeed_jpg.webp)|
 |Spindel speed, $n(n/min)$|     |Spindel speed, $(n/rpm)$|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/spindlespeedr_jpg.webp)|      |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/spindlespeedrpm_jpg.webp)|  
+|![Alt text](images/spindlespeedr_jpg.webp)|      |![Alt text](images/spindlespeedrpm_jpg.webp)|  
 |Feed per tooth, $f(mm)$|       |Feed per tooth, $f(inch)$|
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/feedpertoothmm_jpg.webp)|     |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/feedpertoothinch_jpg.webp) |
+|![Alt text](images/feedpertoothmm_jpg.webp)|     |![Alt text](images/feedpertoothinch_jpg.webp) |
 |Feed per revolution, $f(mm/rev)|       |Feed per revolution, $f(inch/rev)|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/feedperrevolutionmm_jpg.webp)|        |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/feedperrevolutioninch_jpg.webp)|  
+|![Alt text](images/feedperrevolutionmm_jpg.webp)|        |![Alt text](images/feedperrevolutioninch_jpg.webp)|  
 |Metal removal rate, $Q (cm/min)$|      |Metal removal rate, $Q (inch/min$)|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/metalremovalratecm_jpg.webp)|     |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/metalremovalrateinch_jpg.webp)|  
+|![Alt text](images/metalremovalratecm_jpg.webp)|     |![Alt text](images/metalremovalrateinch_jpg.webp)|  
 |Net power, $P(kW)$|        |Net power, $P(HP)$|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/netpowerkw_jpg.webp)|     |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/netpowerhp_jpg.webp)|  
+|![Alt text](images/netpowerkw_jpg.webp)|     |![Alt text](images/netpowerhp_jpg.webp)|  
 |Torque, $M(Nm)$|       |Torque, $M(.lbf ft)$|  
-|![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/torquenm_jpg.webp)|       |![Alt text](https://github.com/onkanat/Machining_Formulas/blob/master/images/torquelbf_jpg.webp)|  
+|![Alt text](images/torquenm_jpg.webp)|       |![Alt text](images/torquelbf_jpg.webp)|  
 
 |Symbol |Designation/definition |Metric |Imperial|  
 |---|---|---|---|  
-|$ae$ |Radial depth of cut |mm |inch|  
-|$ap$ |Axial depth of cut |mm |inch|  
-|$DCap$ |Cutting diameter at cutting depth $ap$ |mm |inch|  
-|$Dm$ |Machined diameter (component diameter) |mm |inch|  
-|$fz$ |Feed per tooth |mm |inch|  
-|$fn$ |Feed per revolution |mm/rev |inch/rev|
-|$n$ |Spindle speed |rpm |rpm|  
-|$vc$ |Cutting speed |m/min |ft/min|  
-|$ve$ |Effective cutting speed |mm/min |inch/min|
-|$vf$ |Table feed |mm/min |inch/min|
-|$zc$ |Number of effective teeth |pcs |pcs|  
-|$hex$ |Maximum chip thickness |mm |inch|
-|$hm$ |Average chip thickness |mm |inch|  
-|$kc$ |Specific cutting force |$N/mm^2$ |$N/inch^2$|  
-|$Pc$ |Net power |kW |HP|  
-|$Mc$ |Torque |Nm |lbf ft|  
-|$Q$ |Metal removal rate |$cm^3/min$ |$inch^3/min$|
-|KAPR |Entering angle |degree||
-|PSIR |Lead angle||degree|  
-|BD |Body diameter |mm |inch|  
-|DC |Cutting diameter |mm |inch|  
-|LU |Usable length |mm |inch|
+## 🧰 Kurulum ve Çalıştırma (V3)
 
-## 🚀 V2 - Tek Sayfa Çalışma Alanı Sistemi
+1) Bağımlılıkları kurun:
 
-V2, hesaplama ve model etkileşimini tamamen yeniden tasarlar. Artık chat geçmişi yerine tek sayfa üzerinde hesaplama, not alma ve model analizi döngüsü bulunur.
-
-### ✨ V2 Özellikleri
-
-- **🔧 Tek Sayfa Çalışma Alanı:** Tüm hesaplamalar, notlar ve model yorumları tek sayfada görüntülenir
-- **📝 Not Alma Sistemi:** Her hesaplamaya kullanıcı notları eklenebilir
-- **🤖 Akıllı Model Analizi:** Model tüm çalışma alanını görerek detaylı analiz yapar
-- **💾 Oturum Yönetimi:** Çalışma alanı dışa/içe aktarılabilir
-- **🔄 History'siz Etkileşim:** Her istek bağımsız, bağlam tabanlı çalışır
-- **🎛️ Gelişmiş Kontrol Paneli:** Karşılaştırma ve genel analiz araçları
-
-### 📋 Kullanım Akışı
-
-1. **Hesaplama Yap:** Sol panelden hesaplama türünü seç ve parametreleri gir
-2. **Sonuçları Gör:** Hesaplama sonuçları çalışma alanına kart olarak eklenir
-3. **Not Ekle:** Her hesaplamaya notlar ekle (isteğe bağlı)
-4. **Model Analizi İste:** Tek hesaplama veya genel çalışma alanı için modelden analiz iste
-5. **Döngüyü Devam Et:** Yeni hesaplamalar ekle, mevcutları güncelle
-
-### 🖥️ Arayüz Yapısı
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  HESAPLAMA PANELİ  │  ÇALIŞMA ALANI (V2)        │
-│ ┌─────────────────┐ │ ┌─────────────────────────────────┐ │
-│ │Hesaplama Türü[▼]│ │ │ 🔷 HESAPLAMA #1 - Kesme Hızı │ │
-│ │Hesaplama   [▼]│ │ │ ┌─────────────────────────────┐ │ │
-│ │ ┌─────────────────┐ │ │ │ │ Çap: 50mm, Devir: 1000rpm │ │ │
-│ │ │Dm: [______] mm │ │ │ │ │ Sonuç: 157.1 m/min        │ │ │
-│ │ │ n: [______] rpm│ │ │ │ └─────────────────────────────┘ │ │
-│ │ └─────────────────┘ │ │ │ 👤 Kullanıcı Notu:              │ │ │
-│ │ [🔷 HESAPLA]    │ │ │ │ "Bu değer yüksek görünüyor"   │ │ │
-│ │ [🗑️ TEMİZLE]    │ │ │ │ 🤖 Model Yorumu:              │ │ │
-│ └─────────────────┘ │ │ │ │ "Değerler doğru, kesme hızı │ │ │
-│                     │ │ │ │ uygun"                        │ │ │
-│ ┌─────────────────┐ │ │ └─────────────────────────────────┘ │ │
-│ │Model: [llama3.2▼]│ │ │                                 │ │
-│ │URL:  [localhost] │ │ │ [🔍 Analiz İste] [💾 Dışa Aktar] │ │
-│ └─────────────────┘ │ │ └─────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────┘
-```
-
-### 🛠️ Kurulum ve Çalıştırma
-
-#### V1 (Orijinal Chat Sistemi)
-```bash
-# V1 - Chat tabanlı sistem
-pip install -r requirements.txt
-python horz_gui.py
-```
-
-#### V2 (Yeni Tek Sayfa Sistemi)  
-
-**🚀 Otomatik Launcher (Tavsiye Edilen):**
-
-**Linux/macOS:**
-```bash
-# V2 - Otomatik environment kontrolü ile
-./run_v2.sh
-```
-
-**Windows:**
-```cmd
-# V2 - Otomatik environment kontrolü ile
-run_v2.bat
-```
-
-**🔧 Manuel Başlatma:**
-```bash
-# V2 - Tek sayfa çalışma alanı
-pip install -r requirements_v2.txt
-python3.11 v2_gui.py  # Python 3.11+ with tkinter support
-```
-
-### 📦 Bağımlılıklar
-
-#### V1 İçin:
 ```bash
 pip install -r requirements.txt
+
+# Proje paketini kurun (src/ layout)
+pip install -e .
 ```
 
-#### V2 İçin (Tavsiye Edilen):
+2) V3 GUI’yi başlatın:
+
+```bash
+python -m machining_formulas
+```
+
+### Legacy notu (V1/V2)
+
+Bu repo artık **V3** akışını esas alır. Kök dizindeki bazı eski başlatıcı betikler/dosyalar (örn. `run_v2.sh`, `requirements_v2.txt`) varsa bile dokümantasyon odağı V3’tür.
+
 ```bash
 pip install -r requirements_v2.txt
 ```
@@ -337,3 +329,5 @@ Bu kılavuz, size verilen araçları daha verimli kullanmanıza yardımcı olaca
    - "Tabanı 100 mm, yüksekliği 80 mm, uzunluğu 250 mm ve yoğunluğu 8.9 g/cm³ olan bir bakır üçgen malzemenin kütlesini hesapla."
 
 Bu örnek promptlar, verilen kılavuzu kullanarak nasıl daha isabetli cümleler oluşturulabileceğini göstermektedir. Her hesaplama türü için gerekli parametrelerin doğru şekilde belirtilmesi ve sorunun anlaşılır bir şekilde ifade edilmesi önemlidir.
+
+```text

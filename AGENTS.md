@@ -1,13 +1,18 @@
 # Machining Formulas - Agent Guidelines
 
 ## Build/Test Commands
-- **Run all tests**: `PYTHONPATH=. pytest tests/`
-- **Run single test**: `PYTHONPATH=. pytest tests/test_file.py::test_function_name`
-- **Run with verbose output**: `PYTHONPATH=. pytest -v tests/`
-- **V3 Complete tests**: `python3 test_v3_complete.py`
-- **V3 Enhanced tests**: `python3 test_v3_enhanced.py`
 - **Install dependencies**: `pip install -r requirements.txt`
-- **Launch V3 GUI**: `python3 v3_gui_direct.py`
+- **Install project (src/ layout)**: `pip install -e .`
+- **Launch V3 GUI (entrypoint)**: `python -m machining_formulas`
+- **Run all tests**: `pytest tests/`
+- **Run all tests (safe fallback)**: `PYTHONPATH=. pytest tests/`
+- **Run single test**: `pytest tests/test_file.py::test_function_name`
+- **Run with verbose output**: `pytest -v tests/`
+- **V3 complete tests (legacy scripts)**: `python test_v3_complete.py`
+- **V3 enhanced tests (legacy scripts)**: `python test_v3_enhanced.py`
+
+> Not: Repo `src/` layout kullanır. Bu yüzden `python -m machining_formulas` komutu için
+> proje paketinin kurulu olması gerekir (`pip install -e .`) veya `PYTHONPATH=src` verilmelidir.
 
 ## Code Style Guidelines
 
@@ -31,8 +36,8 @@
 ### Architecture Patterns
 - Core calculations in `EngineeringCalculator` class
 - GUI/LLM layer in `AdvancedCalculator` class
-- V3 GUI: `v3_gui_direct.py` (production version)
-- Workspace: `workspace_buffer.py` for collaborative editing
+- V3 GUI: `src/machining_formulas/gui/v3_gui.py` (entrypoint: `python -m machining_formulas`)
+- Workspace: `src/machining_formulas/workspace/*` for collaborative editing
 - Tool definitions generated dynamically from calculator methods
 - Parameter metadata via `get_calculation_params()` and `get_shape_parameters()`
 
@@ -60,21 +65,28 @@
 - Validate all user inputs before calculations
 
 ## Project Status
-- **Current Version**: V3 (Production Ready)
-- **Main GUI**: `v3_gui_direct.py`
-- **All Tests Passing**: 9/9 tests complete
-- **Repository**: Clean and synchronized
-- **Last Updated**: V3 official release with all enhancements
+- **Current Version**: V3
+- **Main GUI entrypoint**: `python -m machining_formulas`
+- **Repository layout**: `src/machining_formulas/*` (package), `assets/*` (static files)
+- **Validation**: `pytest tests/` (hidden tests may exist)
 
 ## Key Files
-- Core logic: `engineering_calculator.py`
-- GUI/LLM: `horz_gui.py`
-- V3 GUI: `v3_gui_direct.py` (production)
-- Workspace: `workspace_buffer.py` (collaborative editing)
-- Tool schemas: `ollama_utils.py` / `ollama_utils_v2.py`
-- Parameter handling: `material_utils.py`
+- Core logic: `src/machining_formulas/core/engineering_calculator.py`
+- V3 GUI: `src/machining_formulas/gui/v3_gui.py`
+- Tool-calling (tests focus): `src/machining_formulas/gui/advanced_calculator.py`
+- Execute mode (eval safety): `src/machining_formulas/gui/execute_mode.py`
+- Workspace: `src/machining_formulas/workspace/workspace_buffer.py`, `workspace_editor.py`, `workspace_manager.py`
+- Tool schemas + URL helpers: `src/machining_formulas/llm/ollama_utils.py`
+- V3 GUI Ollama helpers: `src/machining_formulas/llm/ollama_utils_v2.py`
+- Parameter handling: `src/machining_formulas/llm/material_utils.py`
+- Assets path helper: `src/machining_formulas/assets.py`
+- UI labels: `assets/tooltips.json`
 - Tests: `tests/` directory
-- UI labels: `tooltips.json`
+
+### Legacy note
+
+Bu doküman, kanonik `src/` paket yapısını temel alır. Kök dizinde bulunabilecek eski dosyalar
+(örn. `horz_gui.py`, `v3_gui_direct.py`) varsa bile yeni geliştirmeler için referans alınmamalıdır.
 
 ## V3 GUI Features
 - **Keyboard Shortcuts**: Ctrl+S/O/N/M, Ctrl+1/2/3/4, F1 (help)

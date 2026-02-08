@@ -16,9 +16,15 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import requests
+
 from machining_formulas.core.engineering_calculator import EngineeringCalculator
 from machining_formulas.llm.material_utils import (
     prepare_material_mass_arguments,
+)
+from machining_formulas.llm.ollama_utils import (
+    candidate_chat_urls,
+    prepare_legacy_chat_payload,
 )
 
 
@@ -66,7 +72,8 @@ class AdvancedCalculator:
     # ---- Networking hooks (tests monkeypatch these) ----
 
     def _candidate_chat_urls(self, url: str) -> List[str]:
-        return [url]
+        # Prefer /v1 first (tools), but allow forcing legacy order via flag.
+        return candidate_chat_urls(url, force_legacy_first=bool(getattr(self, "force_legacy_chat", False)))
 
     def _post_chat_with_legacy_support(
         self,
@@ -75,10 +82,70 @@ class AdvancedCalculator:
         headers: Dict[str, str],
         timeout: int = 60,
     ) -> Tuple[Any, str, bool]:
-        raise NotImplementedError("HTTP çağrısı testlerde monkeypatch edilir")
+        """Try candidate URLs until one succeeds.
 
-    def _debug_log_raw_response(self, *_args: Any, **_kwargs: Any) -> None:
-        return
+        Returns: (response_obj, used_url, used_legacy)
+        - used_legacy=True means /api/chat payload compatibility applied.
+        """
+        last_error: Optional[Exception] = None
+
+        for url in url_candidates:
+            used_legacy = "/api/chat" in url
+            try:
+                send_payload = prepare_legacy_chat_payload(payload) if used_legacy else payload
+                resp = requests.post(url, json=send_payload, headers=headers, timeout=timeout)
+                # Ollama: non-200 should fall back to next candidate
+                if resp.status_code == 200:
+                    return resp, url, used_legacy
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+
+        if last_error:
+            raise ValueError(f"Ollama isteği başarısız: {last_error}") from last_error
+        raise ValueError("Ollama isteği başarısız: uygun endpoint bulunamadı")
+
+    def chat_with_tools(
+        self,
+        chat_url: str,
+        model: str,
+        messages_history: List[Dict[str, Any]],
+        tools_definition: List[Dict[str, Any]],
+        *,
+        timeout: int = 60,
+    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """Send a tool-enabled chat request; if tool_calls come back, execute them once."""
+        url_candidates = self._candidate_chat_urls(chat_url)
+
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": list(messages_history),
+            "stream": False,
+            "tools": tools_definition,
+        }
+        headers = {"Content-Type": "application/json"}
+
+        response, used_url, _used_legacy = self._post_chat_with_legacy_support(
+            url_candidates,
+            payload,
+            headers,
+            timeout=timeout,
+        )
+        self.current_chat_url = used_url
+
+        assistant_message = self._extract_assistant_message(response)
+        tool_calls = assistant_message.get("tool_calls") or []
+
+        if tool_calls:
+            return self.handle_tool_calls(
+                used_url,
+                model,
+                list(messages_history),
+                tool_calls,
+                tools_definition,
+            )
+
+        updated_history = list(messages_history) + [assistant_message]
+        return assistant_message, updated_history
 
     # ---- Tool calling ----
 

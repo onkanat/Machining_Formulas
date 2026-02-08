@@ -13,15 +13,18 @@ Bu modül Tkinter tabanlı V3 arayüzünü sağlar.
 from __future__ import annotations
 
 import json
+import re
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
 from tkinter import ttk
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from machining_formulas.assets import asset_path
 from machining_formulas.core.engineering_calculator import EngineeringCalculator
+from machining_formulas.gui.advanced_calculator import AdvancedCalculator
 from machining_formulas.gui.execute_mode import ExecuteModeMixin
+from machining_formulas.llm.ollama_utils import build_calculator_tools_definition, normalize_chat_url
 from machining_formulas.llm.ollama_utils_v2 import (
     get_available_models,
     single_chat_request,
@@ -44,6 +47,9 @@ class V3Calculator(ExecuteModeMixin):
     def __init__(self, root: tk.Tk, tooltips: Dict[str, str]):
         self.root = root
         self.tooltips = tooltips
+
+        # Tool-calling assistant (LLM -> tools -> compute -> final answer)
+        self._tool_assistant = AdvancedCalculator()
 
         # Keep references to PhotoImage instances
         self._header_images: Dict[str, tk.PhotoImage] = {}
@@ -788,6 +794,59 @@ class V3Calculator(ExecuteModeMixin):
             messagebox.showwarning("Uyarı", "Lütfen önce model URL'sini ve model seçin.")
             return
 
+        # Eğer metin bir hesap sorusu gibi görünüyorsa: tools ile yanıtla
+        if self._should_use_tools_for_text(context):
+            try:
+                self.update_status_bar("Hesaplama (tool) yanıtı hazırlanıyor...")
+
+                if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
+                    self._tool_assistant = AdvancedCalculator()
+
+                chat_url = normalize_chat_url(self.current_model_url)
+                tools_def = build_calculator_tools_definition(ec)
+
+                messages = [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Sen bir talaşlı imalat hesap asistanısın. "
+                            "Sayısal hesap gereken durumlarda araçları (tools) kullan ve sonucu birimiyle ver."
+                        ),
+                    },
+                    {"role": "user", "content": context},
+                ]
+
+                assistant_msg, _updated = self._tool_assistant.chat_with_tools(
+                    chat_url,
+                    self.current_model_name,
+                    messages,
+                    tools_def,
+                    timeout=60,
+                )
+
+                answer = str(assistant_msg.get("content", "")).strip() or "(boş yanıt)"
+
+                # Bazı modeller tools varken bile doğrudan (ve bazen yanlış birimle) yanıt verebiliyor.
+                # Bu durumda sık sorulan kalıplar için yerel/araç tabanlı fallback uygula.
+                fallback = self._try_local_tool_fallback(context, messages, answer)
+                if fallback:
+                    answer = fallback
+
+                # Workspace'e ekle (append şeklinde)
+                current_content = self.workspace_editor.get_current_content()
+                suffix = ("\n\n" if current_content.strip() else "") + f"Soru: {context}\nYanıt: {answer}\n"
+                self.workspace_buffer.suggest_edit(len(current_content), len(current_content), suffix)
+                self.workspace_editor._show_suggestions()
+
+                self.update_status_bar("Tool yanıtı eklendi")
+                return
+
+            except Exception as e:
+                messagebox.showerror("Hata", f"Tool yanıtı alınamadı: {str(e)}")
+                self.update_status_bar("Tool yanıtı başarısız")
+                return
+
+        # Aksi halde: mevcut davranış (metni iyileştir)
         try:
             self.update_status_bar("Model önerisi isteniyor...")
 
@@ -807,6 +866,95 @@ class V3Calculator(ExecuteModeMixin):
         except Exception as e:
             messagebox.showerror("Hata", f"Model önerisi alınamadı: {str(e)}")
             self.update_status_bar("Model önerisi başarısız")
+
+    def _try_local_tool_fallback(
+        self,
+        question_text: str,
+        messages_history: List[Dict[str, Any]],
+        model_answer: str,
+    ) -> Optional[str]:
+        """If model doesn't call tools (or returns unit-mismatched answer), compute locally.
+
+        Şu an için hedef: 'kesme hızı' gibi temel sorularda birim hatalarını engellemek.
+        """
+
+        q = (question_text or "").lower()
+        a = (model_answer or "").lower()
+
+        # Turning cutting speed: Dm (mm) + n (rpm) -> m/min
+        if "kesme hızı" in q or "cutting speed" in q:
+            # Eğer model mm/dakika gibi birimlerle (1000x büyük) cevapladıysa düzelt.
+            unit_suspect = any(u in a for u in ("mm/dak", "mm/dk", "mm/min", "mm/dakika"))
+            missing_expected_unit = ("m/min" not in a) and ("ft/min" not in a)
+
+            dm = self._extract_number_for_dm(question_text)
+            n = self._extract_number_for_rpm(question_text)
+            if dm is None or n is None:
+                return None
+
+            if unit_suspect or missing_expected_unit:
+                try:
+                    if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
+                        self._tool_assistant = AdvancedCalculator()
+
+                    tool_result = self._tool_assistant._execute_tool(
+                        "calculate_turning_cutting_speed",
+                        {"Dm": dm, "n": n},
+                        messages_history,
+                    )
+                    return tool_result.content
+                except Exception:
+                    return None
+
+        return None
+
+    def _extract_number_for_dm(self, text: str) -> Optional[float]:
+        """Extract machined diameter (Dm) in mm from free text."""
+        patterns = (
+            r"(?:çap[ıi]?|dm|diameter)\s*[:=]?\s*(\d+(?:[\.,]\d+)?)",
+            r"(\d+(?:[\.,]\d+)?)\s*mm\s*(?:çap|dm)",
+        )
+        return self._extract_first_number(text, patterns)
+
+    def _extract_number_for_rpm(self, text: str) -> Optional[float]:
+        """Extract spindle speed (n) in rpm from free text."""
+        patterns = (
+            r"(?:rpm|n)\s*[:=]?\s*(\d+(?:[\.,]\d+)?)",
+            r"(?:devir\s*/\s*dakika|devir/dakika|devir)\D*(\d+(?:[\.,]\d+)?)",
+            r"(\d+(?:[\.,]\d+)?)\s*(?:rpm|devir\s*/\s*dakika|devir/dakika|devir)",
+        )
+        return self._extract_first_number(text, patterns)
+
+    def _extract_first_number(self, text: str, patterns: tuple[str, ...]) -> Optional[float]:
+        for pat in patterns:
+            m = re.search(pat, text, flags=re.IGNORECASE)
+            if not m:
+                continue
+            raw = (m.group(1) or "").strip().replace(",", ".")
+            try:
+                return float(raw)
+            except ValueError:
+                continue
+        return None
+
+    def _should_use_tools_for_text(self, text: str) -> bool:
+        """Heuristic: if it looks like a machining calculation question, prefer tool-calling."""
+        t = (text or "").lower()
+        if "?" not in t:
+            return False
+        keywords = (
+            "kesme hızı",
+            "cutting speed",
+            "devir",
+            "rpm",
+            "çap",
+            "mm",
+            "ilerleme",
+            "fz",
+            "table feed",
+            "feed per tooth",
+        )
+        return any(k in t for k in keywords)
 
     def _analyze_workspace(self):
         """Analyze entire workspace with model."""
