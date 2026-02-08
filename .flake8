@@ -1,0 +1,3 @@
+[flake8]
+# VS Code / Flake8 line-length defaults to 79; this repo prefers a bit wider lines.
+max-line-length = 111

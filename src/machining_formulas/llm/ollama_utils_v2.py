@@ -6,8 +6,6 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from machining_formulas.llm.ollama_utils import candidate_chat_urls, candidate_tags_urls
-
 
 def single_chat_request(
     model_url: str,

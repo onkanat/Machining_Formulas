@@ -1,7 +1,7 @@
 import pytest
 
-from engineering_calculator import EngineeringCalculator
-from material_utils import prepare_material_mass_arguments
+from machining_formulas.core.engineering_calculator import EngineeringCalculator
+from machining_formulas.llm.material_utils import prepare_material_mass_arguments
 
 
 @pytest.fixture(scope="module")

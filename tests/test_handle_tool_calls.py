@@ -1,4 +1,4 @@
-from horz_gui import AdvancedCalculator
+from machining_formulas.gui.advanced_calculator import AdvancedCalculator
 
 
 class DummyResponse:

@@ -17,10 +17,20 @@
     "python.analysis.inlayHints.pytestParameters": true,
     "python.analysis.inlayHints.variableTypes": true,
     "python.analysis.typeCheckingMode": "basic",
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
     "[python]": {
         "editor.defaultFormatter": "ms-python.autopep8"
     },
     "python.formatting.provider": "none",
+    "python.linting.enabled": true,
+    "python.linting.flake8Enabled": true,
+    "python.linting.flake8Args": [
+        "--max-line-length=111"
+    ],
+    "autopep8.args": [
+        "--max-line-length",
+        "111"
+    ],
     "editor.cursorSurroundingLines": 2,
     "workbench.editor.defaultBinaryEditor": "default",
     "workbench.settings.openDefaultKeybindings": true,

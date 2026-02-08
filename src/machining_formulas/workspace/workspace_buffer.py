@@ -180,7 +180,13 @@ class WorkspaceBuffer:
         self.edits.append(edit)
         return edit
 
-    def suggest_edit(self, start: int, end: int, text: str, description: str = "") -> WorkspaceEdit:
+    def suggest_edit(
+        self,
+        start: int,
+        end: int,
+        text: str,
+        description: str = "",
+    ) -> WorkspaceEdit:
         if start < 0:
             start = 0
         if end > len(self.content):
@@ -206,18 +212,20 @@ class WorkspaceBuffer:
             if edit.id == edit_id and not edit.accepted:
                 if edit.edit_type == EditType.MODEL_INSERT:
                     self.content = (
-                        self.content[: edit.position] + edit.new_text + self.content[edit.position :]
+                        self.content[:edit.position]
+                        + edit.new_text
+                        + self.content[edit.position:]
                     )
                 elif edit.edit_type == EditType.MODEL_DELETE:
                     self.content = (
-                        self.content[: edit.position]
-                        + self.content[edit.position + len(edit.old_text) :]
+                        self.content[:edit.position]
+                        + self.content[edit.position + len(edit.old_text):]
                     )
                 elif edit.edit_type == EditType.MODEL_REPLACE:
                     self.content = (
-                        self.content[: edit.position]
+                        self.content[:edit.position]
                         + edit.new_text
-                        + self.content[edit.position + len(edit.old_text) :]
+                        + self.content[edit.position + len(edit.old_text):]
                     )
 
                 edit.accepted = True
@@ -262,7 +270,11 @@ class WorkspaceBuffer:
         return False
 
     def _create_version(self, description: str, edit_ids: Optional[List[str]] = None):
-        version = WorkspaceVersion(content=self.content, edit_ids=edit_ids or [], description=description)
+        version = WorkspaceVersion(
+            content=self.content,
+            edit_ids=edit_ids or [],
+            description=description,
+        )
         self.versions.append(version)
         self.current_version_id = version.id
 
@@ -295,8 +307,14 @@ class WorkspaceBuffer:
     def import_session(self, data: Dict[str, Any]) -> bool:
         try:
             self.content = data.get("content", "")
-            self.edits = [WorkspaceEdit.from_dict(edit_data) for edit_data in data.get("edits", [])]
-            self.versions = [WorkspaceVersion.from_dict(version_data) for version_data in data.get("versions", [])]
+            self.edits = [
+                WorkspaceEdit.from_dict(edit_data)
+                for edit_data in data.get("edits", [])
+            ]
+            self.versions = [
+                WorkspaceVersion.from_dict(version_data)
+                for version_data in data.get("versions", [])
+            ]
 
             if self.versions:
                 self.current_version_id = self.versions[-1].id

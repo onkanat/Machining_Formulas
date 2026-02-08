@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, Optional
 
 from tkinter import ttk, scrolledtext, messagebox
 
-from .workspace_buffer import EditType, WorkspaceBuffer
+from .workspace_buffer import WorkspaceBuffer
 
 
 class WorkspaceEditor(ttk.Frame):
@@ -252,12 +252,12 @@ class WorkspaceEditor(ttk.Frame):
         new_suffix = new_rev[:min_suffix][::-1] if min_suffix > 0 else ""
 
         old_changed = (
-            old_content[first_diff : len(old_content) - len(old_suffix)]
+            old_content[first_diff: len(old_content) - len(old_suffix)]
             if old_suffix
             else old_content[first_diff:]
         )
         new_changed = (
-            new_content[first_diff : len(new_content) - len(new_suffix)]
+            new_content[first_diff: len(new_content) - len(new_suffix)]
             if new_suffix
             else new_content[first_diff:]
         )
@@ -337,7 +337,11 @@ class WorkspaceEditor(ttk.Frame):
 
         suggestions = self.workspace_buffer.get_pending_suggestions()
         for i, suggestion in enumerate(suggestions):
-            preview = suggestion.new_text[:50] + "..." if len(suggestion.new_text) > 50 else suggestion.new_text
+            preview = (
+                suggestion.new_text[:50] + "..."
+                if len(suggestion.new_text) > 50
+                else suggestion.new_text
+            )
             self.suggestions_listbox.insert(tk.END, f"{i + 1}. {preview}")
 
     def _accept_suggestion(self):
@@ -443,7 +447,11 @@ class WorkspaceEditor(ttk.Frame):
         versions = self.workspace_buffer.get_version_history()
         for version in reversed(versions[-20:]):
             timestamp = version.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-            description = version.description[:50] + "..." if len(version.description) > 50 else version.description
+            description = (
+                version.description[:50] + "..."
+                if len(version.description) > 50
+                else version.description
+            )
             edit_count = len(version.edit_ids)
 
             version_tree.insert(
