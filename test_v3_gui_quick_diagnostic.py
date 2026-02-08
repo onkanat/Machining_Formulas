@@ -64,8 +64,17 @@ def quick_diagnostic():
         try:
             import json
 
-            with open("tooltips.json", "r", encoding="utf-8") as f:
-                tooltips = json.load(f)
+            repo_root = Path(__file__).resolve().parent
+            candidates = [
+                repo_root / "assets" / "tooltips.json",
+                repo_root / "tooltips.json",
+            ]
+            tooltips = {}
+            for p in candidates:
+                if p.exists():
+                    with open(p, "r", encoding="utf-8") as f:
+                        tooltips = json.load(f)
+                    break
             print("✅ Tooltips loaded successfully")
         except FileNotFoundError:
             tooltips = {}

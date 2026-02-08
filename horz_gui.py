@@ -2301,7 +2301,10 @@ assistant (tool_calls): [{{"type":"function","function":{{"name":"calculate_turn
 
 
 if __name__ == "__main__":
-    tooltips = load_tooltips('tooltips.json')
+    # Prefer assets/tooltips.json; keep root tooltips.json for backwards compatibility
+    tooltips = load_tooltips('assets/tooltips.json')
+    if not tooltips:
+        tooltips = load_tooltips('tooltips.json')
     root = tk.Tk()
     app = AdvancedCalculator(root, tooltips)
     root.mainloop()

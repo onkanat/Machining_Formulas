@@ -55,11 +55,17 @@ class V3Calculator(ExecuteModeMixin):
         self.root = root
         self.tooltips = tooltips
 
+        # Keep references to PhotoImage instances
+        self._header_images: Dict[str, tk.PhotoImage] = {}
+
+        # State containers for dynamic calculation UIs (turning/milling)
+        self._dynamic_calc_state: Dict[str, dict] = {}
+
         # Initialize workspace buffer
         self.workspace_buffer = WorkspaceBuffer()
 
         # Model configuration
-        self.current_model_url = "http://localhost:11434"
+        self.current_model_url = "http://192.168.1.14:11434"
         self.current_model_name = ""
         self.ollama_models: List[str] = []
 
@@ -283,7 +289,7 @@ class V3Calculator(ExecuteModeMixin):
         ttk.Label(url_frame, text="URL:", width=8).pack(side="left")
         self.model_url_entry = ttk.Entry(url_frame, width=30)
         self.model_url_entry.pack(side="left", fill="x", expand=True, padx=(5, 0))
-        self.model_url_entry.insert(0, "http://localhost:11434")
+        self.model_url_entry.insert(0, "http://192.168.1.14:11434")
 
         ttk.Button(url_frame, text="🔄", command=self.refresh_model_list, width=3).pack(
             side="right", padx=(5, 0)
@@ -332,14 +338,16 @@ class V3Calculator(ExecuteModeMixin):
         turning_frame = ttk.Frame(self.calc_notebook, style="Calc.TFrame")
         self.calc_notebook.add(turning_frame, text="Tornalama")
 
-        # Cutting speed calculation
-        self._create_cutting_speed_calc(turning_frame)
+        # Header canvas (PNG if available)
+        self._add_tab_header(turning_frame, image_filename="turning.png", fallback_text="Tornalama")
 
-        # Spindle speed calculation
-        self._create_spindle_speed_calc(turning_frame)
-
-        # Feed rate calculation
-        self._create_feed_rate_calc(turning_frame)
+        # Dynamic calculation form (dropdown -> params)
+        self._init_dynamic_calc_ui(
+            parent=turning_frame,
+            calc_category_key="turning",
+            calc_type_display="Tornalama Hesaplamaları",
+            state_key="turning",
+        )
 
     def _create_cutting_speed_calc(self, parent):
         """Create cutting speed calculation."""
@@ -464,40 +472,16 @@ class V3Calculator(ExecuteModeMixin):
         milling_frame = ttk.Frame(self.calc_notebook, style="Calc.TFrame")
         self.calc_notebook.add(milling_frame, text="Frezeleme")
 
-        # Create scrollable frame for milling calculations
-        canvas = tk.Canvas(milling_frame, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(
-            milling_frame, orient="vertical", command=canvas.yview
+        # Header canvas (PNG if available)
+        self._add_tab_header(milling_frame, image_filename="milling.png", fallback_text="Frezeleme")
+
+        # Dynamic calculation form (dropdown -> params)
+        self._init_dynamic_calc_ui(
+            parent=milling_frame,
+            calc_category_key="milling",
+            calc_type_display="Frezeleme Hesaplamaları",
+            state_key="milling",
         )
-        scrollable_frame = ttk.Frame(canvas, style="Calc.TFrame")
-
-        # Configure canvas scrolling
-        def configure_scroll_region(event=None):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-
-        scrollable_frame.bind("<Configure>", configure_scroll_region)
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        # Create window in canvas
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-
-        # Add milling calculations
-        self._create_milling_table_feed_calc(scrollable_frame)
-        self._create_milling_cutting_speed_calc(scrollable_frame)
-        self._create_milling_spindle_speed_calc(scrollable_frame)
-        self._create_milling_feed_per_tooth_calc(scrollable_frame)
-        self._create_milling_feed_per_revolution_calc(scrollable_frame)
-        self._create_milling_mrr_calc(scrollable_frame)
-        self._create_milling_net_power_calc(scrollable_frame)
-        self._create_milling_torque_calc(scrollable_frame)
-
-        # Update scroll region after adding all content
-        scrollable_frame.update_idletasks()
-        configure_scroll_region()
-
-        # Pack canvas and scrollbar
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
 
     def _create_milling_table_feed_calc(self, parent):
         """Create milling table feed calculation."""
@@ -851,6 +835,9 @@ class V3Calculator(ExecuteModeMixin):
         """Create material calculations tab."""
         material_frame = ttk.Frame(self.calc_notebook, style="Calc.TFrame")
         self.calc_notebook.add(material_frame, text="Malzeme")
+
+        # Header canvas (PNG if available)
+        self._add_tab_header(material_frame, image_filename="material.png", fallback_text="Malzeme")
 
         # Mass calculation
         self._create_mass_calc(material_frame)
@@ -1368,12 +1355,234 @@ class V3Calculator(ExecuteModeMixin):
         drilling_frame = ttk.Frame(self.calc_notebook, style="Calc.TFrame")
         self.calc_notebook.add(drilling_frame, text="Delme")
 
+        # Header canvas (PNG if available)
+        self._add_tab_header(drilling_frame, image_filename="drilling.png", fallback_text="Delme")
+
         # Add drilling calculations here
         ttk.Label(
             drilling_frame,
             text="Delme hesaplamaları yakında eklenecek...",
             font=("Arial", 10),
         ).pack(pady=20)
+
+    def _assets_image_path(self, image_filename: str) -> Path:
+        """Resolve an image under assets/images/ relative to repository root."""
+        return Path(__file__).resolve().parent / "assets" / "images" / image_filename
+
+    def _add_tab_header(self, parent: ttk.Widget, image_filename: str, fallback_text: str) -> None:
+        """Add a top header canvas with a symbolic PNG image (or fallback text)."""
+        header_frame = ttk.Frame(parent, style="Calc.TFrame")
+        header_frame.pack(fill="x", padx=5, pady=(5, 0))
+
+        canvas = tk.Canvas(header_frame, height=120, highlightthickness=0, bg="white")
+        canvas.pack(fill="x", expand=False)
+
+        image_path = self._assets_image_path(image_filename)
+        if image_path.exists():
+            try:
+                photo = tk.PhotoImage(file=str(image_path))
+                # Keep a reference to avoid GC
+                self._header_images[str(image_path)] = photo
+
+                # Center the image horizontally
+                canvas.update_idletasks()
+                canvas_width = max(canvas.winfo_width(), 1)
+                img_width = photo.width() if photo.width() > 0 else 1
+                x = max((canvas_width - img_width) // 2, 0)
+                canvas.create_image(x, 0, anchor="nw", image=photo)
+                return
+            except tk.TclError:
+                # Unsupported/invalid image; fall back to text
+                pass
+
+        # Fallback: simple symbolic banner
+        canvas.create_rectangle(0, 0, 5000, 120, fill="#f5f7fb", outline="")
+        canvas.create_text(
+            20,
+            60,
+            anchor="w",
+            text=f"{fallback_text} (görsel bulunamadı)",
+            fill="#2c3e50",
+            font=("Arial", 14, "bold"),
+        )
+
+    def _init_dynamic_calc_ui(
+        self,
+        parent: ttk.Widget,
+        calc_category_key: str,
+        calc_type_display: str,
+        state_key: str,
+    ) -> None:
+        """Create a dropdown-driven dynamic calculation form."""
+        container = ttk.Frame(parent, style="Calc.TFrame")
+        container.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Method selector
+        selector_frame = ttk.LabelFrame(container, text="Hesap Türü", style="Calc.TFrame")
+        selector_frame.pack(fill="x", padx=5, pady=5)
+
+        ttk.Label(selector_frame, text="Seçim:", width=10).pack(side="left", padx=(5, 0), pady=5)
+
+        available = ec.get_available_calculations().get(calc_category_key, [])
+        method_var = tk.StringVar(value=available[0] if available else "")
+
+        method_combo = ttk.Combobox(
+            selector_frame,
+            textvariable=method_var,
+            values=available,
+            state="readonly" if available else "disabled",
+            style="Calc.TCombobox",
+        )
+        method_combo.pack(side="left", fill="x", expand=True, padx=5, pady=5)
+
+        # Params
+        params_frame = ttk.LabelFrame(container, text="Parametreler", style="Calc.TFrame")
+        params_frame.pack(fill="x", padx=5, pady=5)
+
+        # Actions + result
+        actions_frame = ttk.Frame(container, style="Calc.TFrame")
+        actions_frame.pack(fill="x", padx=5, pady=(5, 0))
+
+        result_label = ttk.Label(actions_frame, text="", font=("Arial", 10, "bold"), foreground="blue")
+        result_label.pack(side="right", padx=5)
+
+        ttk.Button(actions_frame, text="Hesapla", command=lambda: self._dynamic_calc_calculate(state_key)).pack(
+            side="left", padx=(0, 5)
+        )
+        ttk.Button(
+            actions_frame,
+            text="📝 Çalışma Alanına Ekle",
+            command=lambda: self._dynamic_calc_inject(state_key),
+        ).pack(side="left")
+
+        self._dynamic_calc_state[state_key] = {
+            "category": calc_category_key,
+            "type_display": calc_type_display,
+            "method_var": method_var,
+            "method_combo": method_combo,
+            "params_frame": params_frame,
+            "param_entries": {},
+            "result_label": result_label,
+            "last_result": None,
+        }
+
+        method_combo.bind("<<ComboboxSelected>>", lambda _e: self._dynamic_calc_rebuild_params(state_key))
+        self._dynamic_calc_rebuild_params(state_key)
+
+    def _dynamic_calc_rebuild_params(self, state_key: str) -> None:
+        """Rebuild parameter entry widgets based on current dropdown selection."""
+        state = self._dynamic_calc_state.get(state_key)
+        if not state:
+            return
+
+        params_frame: ttk.Frame = state["params_frame"]
+        for widget in params_frame.winfo_children():
+            widget.destroy()
+
+        state["param_entries"] = {}
+        state["last_result"] = None
+        state["result_label"].config(text="")
+
+        method_key = state["method_var"].get()
+        if not method_key:
+            ttk.Label(params_frame, text="Hesap türü bulunamadı.", foreground="red").pack(padx=10, pady=10)
+            return
+
+        try:
+            param_details = ec.get_calculation_params(state["category"], method_key)
+        except Exception as exc:
+            ttk.Label(params_frame, text=f"Parametreler yüklenemedi: {exc}", foreground="red").pack(
+                padx=10, pady=10
+            )
+            return
+
+        if not param_details:
+            ttk.Label(params_frame, text="Bu hesap için parametre yok.").pack(padx=10, pady=10)
+            return
+
+        for p in param_details:
+            row = ttk.Frame(params_frame, style="Calc.TFrame")
+            row.pack(fill="x", pady=2, padx=5)
+
+            label_text = p.get("display_text_turkish") or p["name"]
+            ttk.Label(row, text=f"{label_text}:", width=22).pack(side="left")
+
+            entry = ttk.Entry(row, width=15)
+            entry.pack(side="left", padx=(5, 0))
+
+            unit = p.get("unit", "")
+            if unit:
+                ttk.Label(row, text=unit).pack(side="left", padx=(5, 0))
+
+            state["param_entries"][p["name"]] = entry
+
+    def _dynamic_calc_calculate(self, state_key: str) -> None:
+        """Calculate the selected dynamic calculation using core parameter metadata."""
+        state = self._dynamic_calc_state.get(state_key)
+        if not state:
+            return
+
+        method_key = state["method_var"].get()
+        if not method_key:
+            messagebox.showerror("Hata", "Lütfen bir hesap türü seçin.")
+            return
+
+        try:
+            param_details = ec.get_calculation_params(state["category"], method_key)
+            args: List[float] = []
+            params_dict: Dict[str, float] = {}
+
+            for p in param_details:
+                name = p["name"]
+                entry = state["param_entries"].get(name)
+                if entry is None:
+                    raise ValueError(f"Eksik parametre alanı: {name}")
+
+                val_str = entry.get().strip()
+                if val_str == "":
+                    raise ValueError(f"{name} için değer girin")
+
+                val = float(val_str)
+                args.append(val)
+                params_dict[name] = val
+
+            if state["category"] == "turning":
+                result_dict = ec.calculate_turning(method_key, *args)
+            elif state["category"] == "milling":
+                result_dict = ec.calculate_milling(method_key, *args)
+            else:
+                raise ValueError(f"Desteklenmeyen kategori: {state['category']}")
+
+            value = float(result_dict["value"])
+            unit = str(result_dict.get("units", ""))
+            state["last_result"] = {"value": value, "unit": unit, "params": params_dict, "method": method_key}
+
+            unit_text = f" {unit}" if unit else ""
+            state["result_label"].config(text=f"Sonuç: {value:.4g}{unit_text}")
+
+        except ValueError as exc:
+            messagebox.showerror("Hata", f"Lütfen geçerli sayısal değerler girin: {exc}")
+        except Exception as exc:
+            messagebox.showerror("Hata", f"Hesaplama hatası: {exc}")
+
+    def _dynamic_calc_inject(self, state_key: str) -> None:
+        """Inject the last dynamic calculation result into the workspace."""
+        state = self._dynamic_calc_state.get(state_key)
+        if not state:
+            return
+
+        if not state.get("last_result"):
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+            return
+
+        last = state["last_result"]
+        self.workspace_editor.insert_calculation_result(
+            state["type_display"],
+            last["method"],
+            last["params"],
+            last["value"],
+            last["unit"],
+        )
 
     def _create_workspace_panel(self):
         """Create workspace editor panel."""
@@ -1762,7 +1971,7 @@ class V3Calculator(ExecuteModeMixin):
                 self.current_model_url,
                 self.current_model_name,
                 f"Bu metni düzenle veya iyileştir: {context}",
-                timeout=60,
+                timeout=120,
             )
 
             # Add as suggestion to workspace
@@ -1795,7 +2004,7 @@ class V3Calculator(ExecuteModeMixin):
             )
 
             response = single_chat_request(
-                self.current_model_url, self.current_model_name, context, timeout=60
+                self.current_model_url, self.current_model_name, context, timeout=120
             )
 
             messagebox.showinfo("Çalışma Alanı Analizi", str(response))
@@ -2048,8 +2257,18 @@ def main():
 
         # Load tooltips
         try:
-            with open("tooltips.json", "r", encoding="utf-8") as f:
-                tooltips = json.load(f)
+            repo_root = Path(__file__).resolve().parent
+            candidates = [
+                repo_root / "assets" / "tooltips.json",
+                repo_root / "tooltips.json",  # backward compatibility
+            ]
+
+            tooltips = {}
+            for p in candidates:
+                if p.exists():
+                    with open(p, "r", encoding="utf-8") as f:
+                        tooltips = json.load(f)
+                    break
         except FileNotFoundError:
             tooltips = {}
 

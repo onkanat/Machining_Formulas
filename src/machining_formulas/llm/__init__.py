@@ -1,0 +1,1 @@
+"""LLM/Ollama integration helpers."""

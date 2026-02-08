@@ -1,0 +1,1 @@
+"""Collaborative workspace buffer + editor."""

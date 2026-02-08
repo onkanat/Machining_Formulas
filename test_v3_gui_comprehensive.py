@@ -9,6 +9,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 import json
+from pathlib import Path
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -94,8 +95,17 @@ class V3GuiTester:
 
             # Load tooltips
             try:
-                with open("tooltips.json", "r", encoding="utf-8") as f:
-                    tooltips = json.load(f)
+                repo_root = Path(__file__).resolve().parent
+                candidates = [
+                    repo_root / "assets" / "tooltips.json",
+                    repo_root / "tooltips.json",
+                ]
+                tooltips = {}
+                for p in candidates:
+                    if p.exists():
+                        with open(p, "r", encoding="utf-8") as f:
+                            tooltips = json.load(f)
+                        break
             except FileNotFoundError:
                 tooltips = {}
 
