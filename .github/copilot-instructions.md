@@ -2,29 +2,39 @@
 
 Amaç
 - Bu depo, imalat (tornalama/frezeleme) hesaplamaları ile malzeme kütlesi hesabını yapar ve Ollama tabanlı LLM ile konuşma/araç-çağırma (tool-calling) entegre çalışır.
-- Çekirdek hesaplama mantığı [`EngineeringCalculator`](engineering_calculator.py) sınıfındadır.
-- GUI ve LLM entegrasyonu [`AdvancedCalculator`](horz_gui.py) ile yönetilir; Ollama ve yardımcı araç akışı artık ayrı yardımcı modüllerle modülerleştirilmiştir.
+- Repo `src/` layout kullanır; kanonik paket yolu `src/machining_formulas/` altındadır.
+- Çekirdek hesaplama mantığı [`EngineeringCalculator`](src/machining_formulas/core/engineering_calculator.py) sınıfındadır.
+- Üretim GUI: Tkinter tabanlı V3 arayüzü [`V3Calculator`](src/machining_formulas/gui/v3_gui.py) ile sağlanır. Giriş noktası: `python -m machining_formulas`.
+- Tool-calling odaklı minimal sınıf (özellikle testler için): [`AdvancedCalculator`](src/machining_formulas/gui/advanced_calculator.py).
 
 Ana Modüller ve Semboller
-- Çekirdek hesaplayıcı: [`EngineeringCalculator`](engineering_calculator.py)
-  - Tornalama: [`EngineeringCalculator.calculate_turning`](engineering_calculator.py), tanımlar: `turning_definitions`
-  - Frezeleme: [`EngineeringCalculator.calculate_milling`](engineering_calculator.py), tanımlar: `milling_definitions`
-  - Malzeme kütlesi: [`EngineeringCalculator.calculate_material_mass`](engineering_calculator.py)
-  - Parametre meta bilgisi: [`EngineeringCalculator.get_calculation_params`](engineering_calculator.py)
-  - Şekil parametreleri: [`EngineeringCalculator.get_shape_parameters`](engineering_calculator.py)
-  - Şekil adları: [`EngineeringCalculator.get_available_shapes`](engineering_calculator.py)
-- GUI + LLM katmanı:
-  - Başlatıcı/arayüz: [`AdvancedCalculator`](horz_gui.py)
-  - Execute modu mixin: [`ExecuteModeMixin`](execute_mode.py)
-  - Ollama URL yardımcıları ve tool şeması: [`ollama_utils`](ollama_utils.py)
-  - Tool çağrısı argüman normalizasyonu: [`material_utils`](material_utils.py)
-  - Tool şeması üretimi: [`AdvancedCalculator._get_calculator_tools_definition`](horz_gui.py) → `ollama_utils.build_calculator_tools_definition`
-  - Ollama çağrısı: [`AdvancedCalculator.call_ollama_api`](horz_gui.py)
-  - Tool çağrısı işleme: [`AdvancedCalculator.handle_tool_calls`](horz_gui.py) (yardımcı metotlar: `_parse_tool_call`, `_execute_tool_call`, `_attempt_mass_fallback`)
+- Çekirdek hesaplayıcı: [`EngineeringCalculator`](src/machining_formulas/core/engineering_calculator.py)
+  - Tornalama: `EngineeringCalculator.calculate_turning`, tanımlar: `turning_definitions`
+  - Frezeleme: `EngineeringCalculator.calculate_milling`, tanımlar: `milling_definitions`
+  - Malzeme kütlesi: `EngineeringCalculator.calculate_material_mass`
+  - Parametre meta bilgisi: `EngineeringCalculator.get_calculation_params`
+  - Şekil parametreleri: `EngineeringCalculator.get_shape_parameters`
+  - Şekil adları: `EngineeringCalculator.get_available_shapes`
+- GUI katmanı:
+  - V3 Tkinter arayüzü + dinamik parametre formları + sekme header canvas: [`V3Calculator`](src/machining_formulas/gui/v3_gui.py)
+  - Execute modu mixin (eval güvenliği): [`ExecuteModeMixin`](src/machining_formulas/gui/execute_mode.py)
+- LLM yardımcıları:
+  - Ollama URL yardımcıları + tool şeması üretimi: [`ollama_utils`](src/machining_formulas/llm/ollama_utils.py)
+    - `normalize_chat_url`, `candidate_chat_urls`, `candidate_tags_urls`
+    - `build_calculator_tools_definition(calculator)`
+  - V3 GUI’nin basit istek/bağlantı fonksiyonları: [`ollama_utils_v2`](src/machining_formulas/llm/ollama_utils_v2.py)
+  - Tool çağrısı argüman normalizasyonu (kütle/şekil/malzeme): [`material_utils`](src/machining_formulas/llm/material_utils.py)
+- Tool-calling sınıfı (test odaklı): [`AdvancedCalculator`](src/machining_formulas/gui/advanced_calculator.py)
+  - Tool çağrısı işleme: `AdvancedCalculator.handle_tool_calls()` (yardımcılar: `_parse_tool_arguments`, `_execute_tool`, `_build_silent_model_summary`, ...)
+- Assets:
+  - Kanonik asset klasörü repo kökünde `assets/` altındadır.
+  - Çeviri/etiketler: `assets/tooltips.json`
+  - Görseller: `assets/images/*.png`
+  - Path çözümü: `machining_formulas.assets.asset_path()` (`src/machining_formulas/assets.py`)
 
 Genel Kurallar
 - Dilde süreklilik: Kullanıcı arayüzü ve mesajlar Türkçe. Kodda fonksiyon/parametre isimleri mevcut İngilizce anahtarlarla uyumlu tutulur.
-- Mevcut fonksiyonları kullan: Yeni hesaplamalar eklerken önce [`EngineeringCalculator`](engineering_calculator.py) içinde tanımla, GUI ve LLM şemasını bu kaynaktan üret.
+- Mevcut fonksiyonları kullan: Yeni hesaplamalar eklerken önce [`EngineeringCalculator`](src/machining_formulas/core/engineering_calculator.py) içinde tanımla; GUI (dinamik parametreler) ve LLM tool şemasını bu kaynaktan üret.
 - Birim tutarlılığı: 
   - Uzunluk: mm
   - Hacim: mm³ (iç hesap), dışa dönük kütlede cm³’e dönüşüm var.
@@ -40,28 +50,30 @@ Kod Stili
 - Fonksiyon/parametre isimleri: `EngineeringCalculator`’daki anahtarlarla birebir.
 
 GUI ve Dinamik Parametreler
-- Parametre alanlarını her hesaplama için [`EngineeringCalculator.get_calculation_params`](engineering_calculator.py) üzerinden üret.
+- Parametre alanlarını her hesaplama için `EngineeringCalculator.get_calculation_params()` üzerinden üret.
 - Malzeme kütlesi özel akışı:
-  - Şekil seçimi (TR ad → iç anahtar için [`EngineeringCalculator.get_available_shapes`](engineering_calculator.py))
-  - Şekil boyutları: [`EngineeringCalculator.get_shape_parameters`](engineering_calculator.py) ile sıralı alınır.
-- Çeviri/etiketler için `tooltips.json` kullanılır.
+  - Şekil seçimi (TR ad → iç anahtar için `EngineeringCalculator.get_available_shapes()`)
+  - Şekil boyutları: `EngineeringCalculator.get_shape_parameters()` ile sıralı alınır.
+- Çeviri/etiketler için `assets/tooltips.json` kullanılır (kodda `asset_path("tooltips.json")`).
+- Sekme header görselleri `assets/images/` altında tutulur (örn: `turning.png`, `milling.png`, `material.png`, `drilling.png`).
 
 LLM / Ollama Entegrasyonu
-- Mesaj akışı ve tool tanımları [`AdvancedCalculator.call_ollama_api`](horz_gui.py) ve [`AdvancedCalculator._get_calculator_tools_definition`](horz_gui.py) içinde.
+- Tool şeması üretimi `machining_formulas.llm.ollama_utils.build_calculator_tools_definition()` ile yapılır.
+- Tool çağrısı yürütümü ve history güncellemesi test odaklı `machining_formulas.gui.advanced_calculator.AdvancedCalculator.handle_tool_calls()` içindedir.
 - Tool isimleri:
   - Tornalama: `calculate_turning_{method_key}`
   - Frezeleme: `calculate_milling_{method_key}`
   - Kütle: `calculate_material_mass`
 - Argüman sıralaması ve isimleri, her zaman [`EngineeringCalculator.get_calculation_params`](engineering_calculator.py) ve [`EngineeringCalculator.get_shape_parameters`](engineering_calculator.py) çıktısına göre derlenir.
 - Model URL ve etiketler:
-  - Varsayılan chat uç noktası `http://localhost:11434/v1/chat`; `ollama_utils.normalize_chat_url` ve `candidate_chat_urls` hem `/v1/chat` hem `/api/chat` için yedekler üretir.
-  - Model listesi `refresh_model_list` içinde `candidate_tags_urls` ile `/v1/tags`/`/api/tags` üzerinden dinamik çekilir; başarısızlıkta küçük statik listeye düşülür.
+  - URL normalizasyonu: `ollama_utils.normalize_chat_url()`; aday uç noktalar: `candidate_chat_urls()` ve `candidate_tags_urls()`.
+  - V3 GUI model listesi/bağlantı testi için `ollama_utils_v2.get_available_models()` ve `ollama_utils_v2.test_connection()` kullanır.
 - İsteklerde `requests` kullanırken timeout ver (ör. 20s) ve HTTP hatalarını yakala.
 - Konuşma geçmişi ve araç yanıtları `self.history` yapısal listesinde tutulur; her tool sonucu `role="tool"` objesi olarak eklenmelidir.
-- Malzeme kütlesi argümanları `material_utils.prepare_material_mass_arguments` ile normalize edilir; yeni şekil parametreleri eklenirken bu yardımcıyı güncelleyin ve fallback senaryolarını (`_attempt_mass_fallback`) gözden geçirin.
+- Malzeme kütlesi argümanları `material_utils.prepare_material_mass_arguments()` ile normalize edilir; yeni şekil parametreleri eklenirken bu yardımcıyı güncelleyin ve fallback senaryolarını gözden geçirin.
 
 Güvenlik ve Gizlilik
-- `ExecuteModeMixin` (`execute_mode.py`) eval tabanlı işlevi kapsüller; karışık sınıfa müdahale ederken mixin’i genişletin ve `_get_exec_mode_calculator` sağlandığından emin olun.
+- `ExecuteModeMixin` (`src/machining_formulas/gui/execute_mode.py`) eval tabanlı işlevi kapsüller; karışık sınıfa müdahale ederken mixin’i genişletin ve `_get_exec_mode_calculator` sağlandığından emin olun.
   - `eval` erişimi sadece seçili metne izin verir; güvenlik değişikliklerinde açık uyarı metinlerini güncelleyin ve pytest ile senaryoları doğrulayın.
 - API anahtarları veya gizli bilgiler kayda yazılmaz.
 
@@ -70,7 +82,7 @@ Test ve Doğrulama
   - Şekil hacimleri (ör: üçgen/dikdörtgen/dairenin bilinen sonuçları)
   - Tornalama/frezeleme örnek değerleri (README örnekleri)
   - Parametre meta bilgisi (beklenen anahtarlar/sıra)
-- `tests/test_handle_tool_calls.py` sahte `AdvancedCalculator` örneklerini oluştururken `debug_show_raw_model_responses` ve yeni yardımcı metodların gerektirdiği alanlar set edilmelidir.
+- `tests/test_handle_tool_calls.py` sahte `AdvancedCalculator` örneklerini oluştururken `debug_show_raw_model_responses` ve diğer gerekli alanlar set edilmelidir.
 - Kenar durumları: Hatalı şekil, eksik parametre, tip hatası, 0/bölme vb.
 
 Değişiklik Önerisi Nasıl Sunulur
@@ -83,7 +95,7 @@ Değişiklik Önerisi Nasıl Sunulur
 ```
 This is the code block that represents the suggested code change:
 ```instructions
-// filepath: /Users/.../engineering_calculator.py
+// filepath: /Users/.../src/machining_formulas/core/engineering_calculator.py
 # ...existing code...
 def new_func():
     pass
@@ -98,9 +110,11 @@ Commit/PR
 - Manuel test adımlarını açıklar
 
 Hızlı Referans Bağlantıları
-- Çekirdek sınıf: [`EngineeringCalculator`](engineering_calculator.py)
-- Tool şeması: [`AdvancedCalculator._get_calculator_tools_definition`](horz_gui.py)
-- Tool çağrısı işleme: [`AdvancedCalculator.handle_tool_calls`](horz_gui.py)
-- Parametre meta: [`EngineeringCalculator.get_calculation_params`](engineering_calculator.py)
-- Şekil parametreleri: [`EngineeringCalculator.get_shape_parameters`](engineering_calculator.py)
-- GUI: [horz_gui.py](horz_gui.py), README: [README.md](README.md), İpuçları: [tooltips.json](tooltips.json)
+- Çekirdek sınıf: [`EngineeringCalculator`](src/machining_formulas/core/engineering_calculator.py)
+- V3 GUI: [`V3Calculator`](src/machining_formulas/gui/v3_gui.py) (giriş: `python -m machining_formulas`)
+- Tool şeması: `ollama_utils.build_calculator_tools_definition` → [`ollama_utils`](src/machining_formulas/llm/ollama_utils.py)
+- Tool çağrısı işleme: `AdvancedCalculator.handle_tool_calls` → [`AdvancedCalculator`](src/machining_formulas/gui/advanced_calculator.py)
+- Parametre meta: `EngineeringCalculator.get_calculation_params`
+- Şekil parametreleri: `EngineeringCalculator.get_shape_parameters`
+- Assets: [`asset_path`](src/machining_formulas/assets.py), `assets/tooltips.json`, `assets/images/`
+- README: [README.md](README.md)
