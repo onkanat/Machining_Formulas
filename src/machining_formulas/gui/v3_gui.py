@@ -59,6 +59,10 @@ class V3Calculator(ExecuteModeMixin):
         # State containers for dynamic calculation UIs (turning/milling)
         self._dynamic_calc_state: Dict[str, dict] = {}
 
+        # Hover popups states
+        self._active_hover_popup: tk.Toplevel | None = None
+        self._active_popup_photo: ImageTk.PhotoImage | None = None
+
         # Initialize workspace buffer
         self.workspace_buffer = WorkspaceBuffer()
 
@@ -414,8 +418,8 @@ class V3Calculator(ExecuteModeMixin):
                 pil_img = Image.open(image_path)
                 # Resize image to fit height=120 while keeping aspect ratio
                 h_size = 120
-                w_percent = h_size / float(pil_img.size[1])
-                w_size = int(float(pil_img.size[0]) * float(w_percent))
+                w_percent = h_size / pil_img.size[1]
+                w_size = int(pil_img.size[0] * w_percent)
                 pil_img_resized = pil_img.resize((w_size, h_size), Image.Resampling.LANCZOS)
                 
                 photo = ImageTk.PhotoImage(pil_img_resized)
@@ -511,8 +515,8 @@ class V3Calculator(ExecuteModeMixin):
                 canvas.bind("<Enter>", on_enter)
                 canvas.bind("<Leave>", on_leave)
                 # Garbage collection korumasi
-                canvas.on_enter = on_enter
-                canvas.on_leave = on_leave
+                setattr(canvas, "on_enter", on_enter)
+                setattr(canvas, "on_leave", on_leave)
                 return
             except Exception as e:
                 print(f"Error loading image {image_filename} with Pillow: {e}")
