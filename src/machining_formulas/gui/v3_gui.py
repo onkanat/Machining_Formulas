@@ -894,14 +894,25 @@ class V3Calculator(ExecuteModeMixin):
                 chat_url = normalize_chat_url(self.current_model_url)
                 tools_def = build_calculator_tools_definition(ec)
 
+                system_prompt = (
+                    "Sen uzman bir talaşlı imalat hesap asistanısın. "
+                    "Sayısal hesap veya kütle/hacim hesabı gereken durumlarda KESİNLİKLE araçları (tools) kullanmalısın! "
+                    "Kendi kendine sayısal tahmin veya yuvarlama yapma, araçtan dönen hassas değerleri referans al.\n\n"
+                    "Yanıtını her zaman son derece profesyonel, temiz bir mühendislik raporu formatında sun. "
+                    "Eğer bir hesaplama yapıldıysa, aşağıdaki şablonu tam olarak kullanarak raporla:\n\n"
+                    "📊 MÜHENDİSLİK HESAPLAMA RAPORU\n"
+                    "==================================\n"
+                    "- **İşlem Türü**: [Buraya hesaplama türünü yazın, örn: Malzeme Kütle Hesabı]\n"
+                    "- **Kullanılan Parametreler**:\n"
+                    "  * [Parametre 1]: [Değer] [Birim]\n"
+                    "  * [Parametre 2]: [Değer] [Birim]\n"
+                    "- **Hesaplanan Hassas Değer**: [Araçtan gelen tam sayısal sonuç] [Birim]\n"
+                    "- **Mühendislik Analizi**: [Hesaplama sonucunun kısa, teknik ve net bir açıklaması]\n"
+                    "=================================="
+                )
+
                 messages = [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Sen bir talaşlı imalat hesap asistanısın. "
-                            "Sayısal hesap gereken durumlarda araçları (tools) kullan ve sonucu birimiyle ver."
-                        ),
-                    },
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": context},
                 ]
 
@@ -1039,10 +1050,17 @@ class V3Calculator(ExecuteModeMixin):
         return None
 
     def _should_use_tools_for_text(self, text: str) -> bool:
-        """Heuristic: if it looks like a machining calculation question, prefer tool-calling."""
+        """Heuristic: if it looks like a machining or mass calculation request, prefer tool-calling."""
         t = (text or "").lower()
-        if "?" not in t:
+        
+        # Soru eki, soru işareti veya hesaplama komut fiilleri var mı kontrol et
+        is_request = (
+            "?" in t 
+            or any(cmd in t for cmd in ("hesapla", "bul", "nedir", "kaç", "calculate", "compute", "find"))
+        )
+        if not is_request:
             return False
+            
         keywords = (
             "kesme hızı",
             "cutting speed",
@@ -1054,6 +1072,16 @@ class V3Calculator(ExecuteModeMixin):
             "fz",
             "table feed",
             "feed per tooth",
+            "kütle",
+            "kütlesi",
+            "mass",
+            "ağırlık",
+            "ağırlığı",
+            "weight",
+            "yoğunluk",
+            "density",
+            "hacim",
+            "volume",
         )
         return any(k in t for k in keywords)
 
