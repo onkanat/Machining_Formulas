@@ -10,9 +10,14 @@ from typing import Dict, Iterable, List
 
 from machining_formulas.core.engineering_calculator import EngineeringCalculator
 
-
+"""
+TODO: ip adresi yerine localhost kullanılacak ve son kullanılan IP adresi kalıcı hale getirilecek.
 _DEFAULT_CHAT_URL = "http://localhost:11434/v1/chat"
 _DEFAULT_TAGS_URL = "http://localhost:11434/api/tags"
+"""
+
+_DEFAULT_CHAT_URL = "http://192.168.1.14:11434/v1/chat"
+_DEFAULT_TAGS_URL = "http://192.168.1.14:11434/api/tags"
 
 
 def normalize_chat_url(url: str | None) -> str:

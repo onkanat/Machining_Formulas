@@ -762,12 +762,14 @@ class V3Calculator(ExecuteModeMixin):
 
             # Control bindings
             self.root.bind_all(f"<Control-{shift_str}{key.lower()}>", lambda event: callback())
-            self.root.bind_all(f"<Control-{shift_str}{key.upper()}>", lambda event: callback())
+            if len(key) == 1 and key.isalpha():
+                self.root.bind_all(f"<Control-{shift_str}{key.upper()}>", lambda event: callback())
 
             # Command bindings on macOS
             if is_mac:
                 self.root.bind_all(f"<Command-{shift_str}{key.lower()}>", lambda event: callback())
-                self.root.bind_all(f"<Command-{shift_str}{key.upper()}>", lambda event: callback())
+                if len(key) == 1 and key.isalpha():
+                    self.root.bind_all(f"<Command-{shift_str}{key.upper()}>", lambda event: callback())
 
         # File Operations
         _bind("n", self._new_workspace)

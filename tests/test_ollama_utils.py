@@ -5,6 +5,7 @@ from machining_formulas.llm.ollama_utils import (
     normalize_chat_url,
     candidate_chat_urls,
     candidate_tags_urls,
+    _DEFAULT_CHAT_URL,
 )
 from machining_formulas.gui.v3_gui import V3Calculator
 
@@ -12,8 +13,8 @@ from machining_formulas.gui.v3_gui import V3Calculator
 def test_normalize_chat_url():
     """Verify normalize_chat_url handles various input patterns correctly."""
     # None or empty
-    assert normalize_chat_url(None) == "http://localhost:11434/v1/chat"
-    assert normalize_chat_url("") == "http://localhost:11434/v1/chat"
+    assert normalize_chat_url(None) == _DEFAULT_CHAT_URL
+    assert normalize_chat_url("") == _DEFAULT_CHAT_URL
     
     # Standard URL with or without trailing slash
     assert normalize_chat_url("http://localhost:11434") == "http://localhost:11434/v1/chat"
