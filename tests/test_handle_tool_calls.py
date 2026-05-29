@@ -192,3 +192,113 @@ def test_handle_tool_calls_returns_success_summary_when_model_is_silent():
 
     # Güncellenen tarihçe mesajı da aynı içeriği taşımalı
     assert updated_history[-1]["content"] == content
+
+
+def test_handle_tool_calls_multi_turn_success():
+    """Test handle_tool_calls handles consecutive multiple tool calls in a single turn and appends them in order."""
+    calculator = _build_calculator_stub()
+
+    captured_payload = {}
+    expected_response = {
+        "message": {
+            "role": "assistant",
+            "content": "Çoklu araç sonuçları özeti: Kesme hızı ve tabla ilerlemesi başarıyla hesaplandı."
+        }
+    }
+
+    def fake_post_chat(url_candidates, payload, headers, timeout=60):
+        captured_payload["messages"] = payload["messages"]
+        return DummyResponse(expected_response), url_candidates[0], False
+
+    calculator._post_chat_with_legacy_support = (  # type: ignore[assignment]
+        fake_post_chat
+    )
+
+    messages_history = [{"role": "system", "content": "Sistem"}]
+    
+    # Multiple tool calls sent consecutively
+    tool_calls = [
+        {
+            "id": "call-1",
+            "function": {
+                "name": "calculate_turning_cutting_speed",
+                "arguments": {"Dm": 50, "n": 1000}
+            }
+        },
+        {
+            "id": "call-2",
+            "function": {
+                "name": "calculate_milling_table_feed",
+                "arguments": {"fz": 0.1, "n": 1000, "ZEFF": 4}
+            }
+        }
+    ]
+
+    assistant_message, updated_history = calculator.handle_tool_calls(
+        "http://localhost:11434/v1/chat",
+        "llama3",
+        messages_history,
+        tool_calls,
+        []
+    )
+
+    assert assistant_message == expected_response["message"]
+    
+    # Check the history sequencing:
+    # 1. System message
+    # 2. Assistant message containing tool calls
+    # 3. First tool execution result
+    # 4. Second tool execution result
+    # 5. Final assistant response summarizing both
+    assert len(updated_history) == len(messages_history) + 4
+    
+    tool_messages = [msg for msg in updated_history if msg.get("role") == "tool"]
+    assert len(tool_messages) == 2
+    assert "157.08" in tool_messages[0]["content"]
+    assert "400.0" in tool_messages[1]["content"]
+
+
+def test_handle_tool_calls_history_role_tool_sequence():
+    """Verify that role="tool" messages are appended to self.history in exact sequence."""
+    calculator = _build_calculator_stub()
+
+    expected_response = {
+        "message": {
+            "role": "assistant",
+            "content": "Sonuçlar özeti"
+        }
+    }
+
+    def fake_post_chat(url_candidates, payload, headers, timeout=60):
+        return DummyResponse(expected_response), url_candidates[0], False
+
+    calculator._post_chat_with_legacy_support = fake_post_chat
+
+    messages_history = [{"role": "system", "content": "Sistem"}]
+    
+    tool_calls = [
+        {
+            "id": "call-1",
+            "function": {
+                "name": "calculate_turning_cutting_speed",
+                "arguments": {"Dm": 50, "n": 1000}
+            }
+        }
+    ]
+
+    calculator.history = []
+    
+    calculator.handle_tool_calls(
+        "http://localhost:11434/v1/chat",
+        "llama3",
+        messages_history,
+        tool_calls,
+        []
+    )
+    
+    # Assert self.history contains the tool message in correct order
+    assert len(calculator.history) == 1
+    assert calculator.history[0]["role"] == "tool"
+    assert calculator.history[0]["tool_call_id"] == "call-1"
+    assert "157.08" in calculator.history[0]["content"]
+

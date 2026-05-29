@@ -27,7 +27,7 @@ _SHAPE_ALIASES = {
     "üçgen": "triangle",
     "paralelkenar": "parallelogram",
     "eşkenar dörtgen": "rhombus",
-    "yamuk": "trapezium",
+    "yamuk": "trapezoid",
 }
 
 _MATERIAL_ALIASES = {

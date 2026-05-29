@@ -94,3 +94,5 @@ Bu doküman, kanonik `src/` paket yapısını temel alır. Kök dizinde bulunabi
 - **Performance**: Debounced calculations, loading indicators, <1s operations
 - **Workspace**: Collaborative editing with version history and AI suggestions
 - **Testing**: Complete test suite with 9/9 tests passing
+- **Window Management (macOS/Python Launcher/vEnv)**: Instant window hiding (`withdraw`) on initialization, auto-resolution detection with fallbacks (`1920x1080`), centered placement (`1400x900`), and absolute focus grabbing using temporary topmost elevation (`-topmost`).
+- **Interactive Reference Visuals (Hover Popups)**: High-resolution hover popups (`480x480` bounding box) with hand cursors, a visual cue overlay (`🔍 Büyütmek için üzerine gelin`), clean enter/leave transitions, safe cursor offset (25px) to prevent flickering, and auto-alignment checking to fit perfectly within screen boundaries.

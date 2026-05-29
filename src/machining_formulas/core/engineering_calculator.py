@@ -21,10 +21,14 @@ class EngineeringCalculator:
             "parallelogram": lambda width, height, length: (width * height) * length,
             "rhombus": lambda diagonal1, diagonal2, length: (diagonal1 * diagonal2 / 2)
             * length,
-            "trapezium": lambda height1, height2, length1, length2: (
-                (length1 + length2) / 2 * height1
+            "trapezoid": lambda width1, width2, height, length: (
+                (width1 + width2) / 2 * height
             )
-            * height2,  # Not: Formül örnek, gerekirse düzelt
+            * length,
+            "trapezium": lambda width1, width2, height, length: (
+                (width1 + width2) / 2 * height
+            )
+            * length,
             "kite": lambda diagonal1, diagonal2, length: (diagonal1 * diagonal2 / 2)
             * length,
             "pentagon": lambda width, length: (5 / 4 * width**2 / math.tan(math.pi / 5))
@@ -256,7 +260,8 @@ class EngineeringCalculator:
             "rectangle": "Dikdörtgen",
             "parallelogram": "Paralelkenar",
             "rhombus": "Eşkenar Dörtgen",
-            "trapezium": "Yamuk",
+            "trapezoid": "Yamuk",
+            "trapezium": "Yamuk (Eski)",
             "kite": "Uçurtma",
             "pentagon": "Beşgen",
             "hexagon": "Altıgen",
@@ -290,6 +295,8 @@ class EngineeringCalculator:
         "diagonal1": "Köşegen 1",
         "diagonal2": "Köşegen 2",
         "length": "Uzunluk",
+        "width1": "Genişlik 1 (Taban)",
+        "width2": "Genişlik 2 (Tavan)",
     }
 
     def get_calculation_params(

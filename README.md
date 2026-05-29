@@ -170,11 +170,11 @@ pip install -r requirements_v2.txt
 - Eğer tkinter kurulu değilse: `pip install tk` (Ubuntu/Debian için: `sudo apt-get install python3-tk`)
 - Geliştirme için ek bağımlılıklar `requirements_v2.txt` içinde yorum satırı olarak mevcuttur
 
-2. **Ollama'yı Çalıştırın:** Ollama sunucunuzun çalıştığından ve istediğiniz modelin (ör. `llama3.1`) kullanılabilir olduğundan emin olun. Uygulama varsayılan olarak `http://localhost:11434/v1/chat` uç noktasını kullanır ve model listesini `http://localhost:11434/v1/tags` üzerinden dinamik olarak çeker.
+2. **Ollama'yı Çalıştırın:** Ollama sunucunuzun çalıştığından ve istediğiniz modelin kullanılabilir olduğundan emin olun. Uygulama varsayılan olarak yerel makinenizdeki `http://localhost:11434` uç noktasını kullanır. Bağlantı altyapısı hem `/v1/chat` (önerilen, tool-calling için) hem de `/api/chat` protokolleri için otomatik geçiş ve fallback desteğine sahiptir.
 3. **Uygulamayı Çalıştırın:**
 
    ```bash
-   python horz_gui.py
+   python -m machining_formulas
    ```
 
 4. **AI ile Etkileşim:**

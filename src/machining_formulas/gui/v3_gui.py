@@ -19,6 +19,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 from typing import Any, Dict, List, Optional
+from PIL import Image, ImageTk
 
 from machining_formulas.assets import asset_path
 from machining_formulas.core.engineering_calculator import EngineeringCalculator
@@ -46,6 +47,7 @@ class V3Calculator(ExecuteModeMixin):
 
     def __init__(self, root: tk.Tk, tooltips: Dict[str, str]):
         self.root = root
+        self.root.withdraw()  # macOS ve diger platformlarda baslangictaki kucuk/konumsuz pencereyi gizle
         self.tooltips = tooltips
 
         # Tool-calling assistant (LLM -> tools -> compute -> final answer)
@@ -61,7 +63,7 @@ class V3Calculator(ExecuteModeMixin):
         self.workspace_buffer = WorkspaceBuffer()
 
         # Model configuration
-        self.current_model_url = "http://192.168.1.14:11434"
+        self.current_model_url = "http://localhost:11434"
         self.current_model_name = ""
         self.ollama_models: List[str] = []
 
@@ -75,8 +77,8 @@ class V3Calculator(ExecuteModeMixin):
         self.root.update_idletasks()
         self._apply_default_geometry()
 
-        # Initialize model connection
-        self.refresh_model_list()
+        # Initialize model connection asynchronously to prevent startup UI freezing
+        self.root.after(100, self.refresh_model_list)
 
     def _initialize_cached_data(self):
         """Initialize cached data for better performance."""
@@ -102,7 +104,6 @@ class V3Calculator(ExecuteModeMixin):
     def setup_ui(self):
         """Setup the main V3 interface."""
         self.root.title("🔧 Mühendislik Hesaplayıcı V3 - Çalışma Alanı")
-        self.root.geometry(f"{DEFAULT_WINDOW_SIZE[0]}x{DEFAULT_WINDOW_SIZE[1]}")
 
         # Configure styles first (before creating widgets)
         self._setup_styles()
@@ -118,12 +119,6 @@ class V3Calculator(ExecuteModeMixin):
 
         # Configure focus and keyboard handling after widgets are created
         self.root.focus_set()
-
-        # Enable proper focus traversal (after widgets are created)
-        try:
-            self.root.tk.call("tkwait", "visibility", self.root)
-        except Exception:
-            pass
 
         self.root.after(100, self._setup_navigation_bindings)
         self.root.after(1000, self._setup_focus_management)
@@ -242,10 +237,10 @@ class V3Calculator(ExecuteModeMixin):
         model_frame = ttk.LabelFrame(
             calc_frame, text="🤖 Model Yapılandırması", style="Calc.TFrame"
         )
-        model_frame.pack(fill="x", expand=True, padx=5, pady=5)
+        model_frame.pack(fill="x", expand=False, padx=10, pady=10)
 
         url_frame = ttk.Frame(model_frame, style="Calc.TFrame")
-        url_frame.pack(fill="x", padx=5, pady=2)
+        url_frame.pack(fill="x", padx=10, pady=6)
 
         ttk.Label(url_frame, text="URL:", width=8).pack(side="left")
         self.model_url_entry = ttk.Entry(url_frame, width=30)
@@ -257,7 +252,7 @@ class V3Calculator(ExecuteModeMixin):
         )
 
         model_frame_inner = ttk.Frame(model_frame, style="Calc.TFrame")
-        model_frame_inner.pack(fill="x", padx=5, pady=2)
+        model_frame_inner.pack(fill="x", padx=10, pady=6)
 
         ttk.Label(model_frame_inner, text="Model:", width=8).pack(side="left")
         self.model_selection_combo = ttk.Combobox(
@@ -269,7 +264,7 @@ class V3Calculator(ExecuteModeMixin):
             model_frame_inner, text="🔗", command=self.test_model_connection, width=3
         ).pack(side="right", padx=(5, 0))
 
-        ttk.Separator(calc_frame, orient="horizontal").pack(fill="x", padx=5, pady=10)
+        ttk.Separator(calc_frame, orient="horizontal").pack(fill="x", padx=10, pady=10)
 
         self._create_calculation_categories(calc_frame)
 
@@ -407,23 +402,117 @@ class V3Calculator(ExecuteModeMixin):
         header_frame = ttk.Frame(parent, style="Calc.TFrame")
         header_frame.pack(fill="x", padx=5, pady=(5, 0))
 
-        canvas = tk.Canvas(header_frame, height=120, highlightthickness=0, bg="white")
+        canvas = tk.Canvas(header_frame, height=120, highlightthickness=0, bg="white", cursor="hand2")
         canvas.pack(fill="x", expand=False)
 
         image_path = self._assets_image_path(image_filename)
         if image_path.exists():
             try:
-                photo = tk.PhotoImage(file=str(image_path))
+                pil_img = Image.open(image_path)
+                # Resize image to fit height=120 while keeping aspect ratio
+                h_size = 120
+                w_percent = h_size / float(pil_img.size[1])
+                w_size = int(float(pil_img.size[0]) * float(w_percent))
+                pil_img_resized = pil_img.resize((w_size, h_size), Image.Resampling.LANCZOS)
+                
+                photo = ImageTk.PhotoImage(pil_img_resized)
                 self._header_images[str(image_path)] = photo
 
                 canvas.update_idletasks()
                 canvas_width = max(canvas.winfo_width(), 1)
-                img_width = photo.width() if photo.width() > 0 else 1
-                x = max((canvas_width - img_width) // 2, 0)
+                x = max((canvas_width - w_size) // 2, 0)
                 canvas.create_image(x, 0, anchor="nw", image=photo)
+
+                # Kullaniciya fareyle uzerine gelindiginde buyuyecegini gosteren minik bilgi metni ekle
+                canvas.create_rectangle(canvas_width - 150, 95, canvas_width - 5, 115, fill="#1a1a1a", outline="", stipple="gray50")
+                canvas.create_text(
+                    canvas_width - 77,
+                    105,
+                    text="🔍 Büyütmek için üzerine gelin",
+                    fill="white",
+                    font=("Arial", 8, "bold")
+                )
+
+                # Fare ile hover edildiginde acilacak yüksek kaliteli popup mantigi
+                def on_enter(event):
+                    # Eger halihazirda acik bir popup varsa temizle
+                    if hasattr(self, "_active_hover_popup") and self._active_hover_popup:
+                        try:
+                            self._active_hover_popup.destroy()
+                        except Exception:
+                            pass
+                    
+                    try:
+                        # Orijinal gorseli yukle ve maksimum 480x480 olacak sekilde en-boy oranini koruyarak olcekle
+                        pil_img_large = Image.open(image_path)
+                        max_size = 480
+                        w_l, h_l = pil_img_large.size
+                        ratio = min(max_size / w_l, max_size / h_l)
+                        new_w = int(w_l * ratio)
+                        new_h = int(h_l * ratio)
+                        pil_img_large_resized = pil_img_large.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                        
+                        photo_large = ImageTk.PhotoImage(pil_img_large_resized)
+                        
+                        # Sadece gorsel ve baslik barindiran çerçevesiz (borderless) premium pencere
+                        popup = tk.Toplevel(self.root)
+                        popup.overrideredirect(True)
+                        popup.attributes("-topmost", True)
+                        popup.config(bg="#1a1a1a", padx=4, pady=4)
+                        
+                        frame_inner = tk.Frame(popup, bg="#1a1a1a")
+                        frame_inner.pack(fill="both", expand=True)
+                        
+                        lbl_img = tk.Label(frame_inner, image=photo_large, bg="#1a1a1a")
+                        lbl_img.pack()
+                        
+                        lbl_text = tk.Label(
+                            frame_inner, 
+                            text="🔧 Referans Teknik Görsel (Büyük Boyut)", 
+                            bg="#1a1a1a", 
+                            fg="#00d2ff", 
+                            font=("Arial", 10, "bold"),
+                            pady=5
+                        )
+                        lbl_text.pack()
+                        
+                        # Ekranda cursor'in hemen sag altinda konumlandir (titremeyi onlemek icin 25px safe offset)
+                        px = event.x_root + 25
+                        py = event.y_root + 15
+                        
+                        # Ekran disina tasmayi engelle
+                        screen_w = self.root.winfo_screenwidth()
+                        screen_h = self.root.winfo_screenheight()
+                        if px + new_w > screen_w:
+                            px = event.x_root - new_w - 25
+                        if py + new_h + 35 > screen_h:
+                            py = event.y_root - new_h - 45
+                        
+                        popup.geometry(f"{new_w}x{new_h + 30}+{px}+{py}")
+                        
+                        self._active_hover_popup = popup
+                        self._active_popup_photo = photo_large
+                        
+                    except Exception as ex:
+                        print(f"Popup olusturma hatasi: {ex}")
+
+                def on_leave(event):
+                    if hasattr(self, "_active_hover_popup") and self._active_hover_popup:
+                        try:
+                            self._active_hover_popup.destroy()
+                        except Exception:
+                            pass
+                        self._active_hover_popup = None
+                        self._active_popup_photo = None
+
+                canvas.bind("<Enter>", on_enter)
+                canvas.bind("<Leave>", on_leave)
+                # Garbage collection korumasi
+                canvas.on_enter = on_enter
+                canvas.on_leave = on_leave
                 return
-            except tk.TclError:
-                pass
+            except Exception as e:
+                print(f"Error loading image {image_filename} with Pillow: {e}")
 
         canvas.create_rectangle(0, 0, 5000, 120, fill="#f5f7fb", outline="")
         canvas.create_text(
@@ -850,10 +939,22 @@ class V3Calculator(ExecuteModeMixin):
         try:
             self.update_status_bar("Model önerisi isteniyor...")
 
+            prompt = (
+                "Aşağıdaki çalışma alanı metnini düzenle, teknik olarak daha okunabilir ve yapılandırılmış hale getir. "
+                "Eğer metinde ham hesaplama verileri, peş peşe eklenmiş sonuçlar veya düzensiz notlar varsa, "
+                "bunları uyumlu bir mühendislik raporu/notu formatında toparla.\n\n"
+                "ÇOK ÖNEMLİ KURALLAR:\n"
+                "1. SADECE düzenlenmiş metni döndür. Kod bloğu (```) bile kullanma, doğrudan metni yaz.\n"
+                "2. 'İşte metnin düzenlenmiş hali', 'Değişikliklerin Gerekçesi', 'Açıklama' gibi sohbet, giriş ve çıkış cümleleri KESİNLİKLE KULLANMA.\n"
+                "3. Kendi yorumunu veya fazladan açıklamaları metne katma, sadece var olan bilgiyi şıklaştır.\n\n"
+                "Düzenlenecek Metin:\n"
+                f"{context}"
+            )
+
             response = single_chat_request(
                 self.current_model_url,
                 self.current_model_name,
-                f"Bu metni düzenle veya iyileştir: {context}",
+                prompt,
                 timeout=120,
             )
 
@@ -975,12 +1076,282 @@ class V3Calculator(ExecuteModeMixin):
                 timeout=120,
             )
 
-            messagebox.showinfo("Çalışma Alanı Analizi", str(response))
+            self._show_analysis_result(str(response))
             self.update_status_bar("Analiz tamamlandı")
 
         except Exception as e:
             messagebox.showerror("Hata", f"Analiz sırasında hata: {str(e)}")
             self.update_status_bar("Analiz başarısız")
+
+    def _show_analysis_result(self, result_text: str):
+        """Show analysis result in a beautiful scrollable dialog."""
+        from tkinter import scrolledtext
+
+        # Create Toplevel window
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Çalışma Alanı Analizi ve Öneriler")
+
+        # Premium layout geometry: 800x650 centered relative to main window
+        width = 800
+        height = 650
+
+        # Get parent geometry
+        parent_x = self.root.winfo_x()
+        parent_y = self.root.winfo_y()
+        parent_w = self.root.winfo_width()
+        parent_h = self.root.winfo_height()
+
+        # Calculate center position
+        x = parent_x + (parent_w - width) // 2
+        y = parent_y + (parent_h - height) // 2
+
+        # Check coordinates validity
+        if x < 0: x = 100
+        if y < 0: y = 100
+
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.minsize(600, 500)
+        dialog.configure(background="#f8f9fa")
+
+        # Make the window active and modal
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Main container with nice padding
+        main_frame = tk.Frame(dialog, bg="#f8f9fa")
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # Premium Header
+        header_label = tk.Label(
+            main_frame,
+            text="🔍 Mühendislik Analiz Raporu",
+            font=("Arial", 14, "bold"),
+            bg="#f8f9fa",
+            fg="#2b3e50",
+            anchor="w"
+        )
+        header_label.pack(fill=tk.X, pady=(0, 5))
+
+        sub_header = tk.Label(
+            main_frame,
+            text="Yapay zeka tarafından çalışma alanınızdaki veriler incelendi ve aşağıdaki öneriler hazırlandı:",
+            font=("Arial", 10),
+            bg="#f8f9fa",
+            fg="#6c757d",
+            anchor="w"
+        )
+        sub_header.pack(fill=tk.X, pady=(0, 15))
+
+        # Text container with border
+        text_frame = tk.Frame(main_frame, bg="#e9ecef", bd=1, relief=tk.SOLID)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+
+        # ScrolledText widget for rich scrollable view
+        text_area = scrolledtext.ScrolledText(
+            text_frame,
+            wrap=tk.WORD,
+            font=("Arial", 11),
+            bg="white",
+            fg="#212529",
+            insertbackground="#212529",
+            padx=15,
+            pady=15,
+            bd=0,
+            highlightthickness=0
+        )
+        text_area.pack(fill=tk.BOTH, expand=True)
+
+        # Configure tags for styling
+        text_area.tag_configure("h2", font=("Arial", 13, "bold"), foreground="#2b3e50")
+        text_area.tag_configure("h3", font=("Arial", 11, "bold"), foreground="#1e293b")
+        text_area.tag_configure("h4", font=("Arial", 10, "bold"), foreground="#334155")
+        text_area.tag_configure("bold", font=("Arial", 11, "bold"), foreground="#0f172a")
+        text_area.tag_configure("italic", font=("Arial", 11, "italic"))
+        text_area.tag_configure("code", font=("Consolas", 10), background="#f1f5f9", foreground="#0f172a")
+        text_area.tag_configure("bullet", font=("Arial", 11), lmargin1=20, lmargin2=30)
+        text_area.tag_configure("separator", font=("Arial", 6), foreground="#cbd5e1")
+        text_area.tag_configure("math_block", font=("Consolas", 10, "bold"), background="#f8fafc", foreground="#0f172a", lmargin1=40, lmargin2=40)
+
+        # Populate the text area initially
+        self._populate_analysis_text(text_area, result_text)
+
+        # Actions implementation
+        def do_copy():
+            """Copy entire text content of the report to the clipboard."""
+            content = text_area.get("1.0", tk.END).strip()
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+            self.update_status_bar("Rapor panoya kopyalandı")
+            messagebox.showinfo("Başarılı", "Rapor içeriği başarıyla panoya kopyalandı!")
+
+        def do_refresh():
+            """Re-fetch the workspace analysis and refresh the UI content."""
+            # Set loading state
+            text_area.configure(state=tk.NORMAL)
+            text_area.delete("1.0", tk.END)
+            text_area.insert(tk.END, "🔄 Çalışma alanı analiz ediliyor... Lütfen bekleyin.\n\n", "bold")
+            text_area.configure(state=tk.DISABLED)
+            dialog.update()
+
+            try:
+                self.update_status_bar("Çalışma alanı yeniden analiz ediliyor...")
+                content = self.workspace_editor.get_current_content()
+                context = f"Bu mühendislik çalışma alanını analiz et ve öneriler sun: {content}"
+
+                new_response = single_chat_request(
+                    self.current_model_url,
+                    self.current_model_name,
+                    context,
+                    timeout=20,
+                )
+
+                self._populate_analysis_text(text_area, str(new_response))
+                self.update_status_bar("Yeniden analiz tamamlandı")
+            except Exception as ex:
+                text_area.configure(state=tk.NORMAL)
+                text_area.insert(tk.END, f"\n❌ Yeniden analiz sırasında hata oluştu:\n{str(ex)}", "bold")
+                text_area.configure(state=tk.DISABLED)
+                self.update_status_bar("Yeniden analiz başarısız")
+
+        # Action Button Frame
+        btn_frame = tk.Frame(main_frame, bg="#f8f9fa")
+        btn_frame.pack(fill=tk.X, pady=(15, 0))
+
+        # Horizontal side-by-side action icons subframe
+        icons_subframe = tk.Frame(btn_frame, bg="#f8f9fa")
+        icons_subframe.pack(side=tk.RIGHT)
+
+        # Refresh Button (↻)
+        refresh_btn = tk.Button(
+            icons_subframe,
+            text="↻",
+            font=("Arial", 14, "bold"),
+            bg="#f1f5f9",
+            fg="#334155",
+            activebackground="#e2e8f0",
+            activeforeground="#334155",
+            relief=tk.FLAT,
+            width=3,
+            height=1,
+            bd=0,
+            command=do_refresh,
+            cursor="hand2"
+        )
+        refresh_btn.pack(side=tk.LEFT, padx=5)
+
+        # Copy Button (📋)
+        copy_btn = tk.Button(
+            icons_subframe,
+            text="📋",
+            font=("Arial", 14),
+            bg="#f1f5f9",
+            fg="#334155",
+            activebackground="#e2e8f0",
+            activeforeground="#334155",
+            relief=tk.FLAT,
+            width=3,
+            height=1,
+            bd=0,
+            command=do_copy,
+            cursor="hand2"
+        )
+        copy_btn.pack(side=tk.LEFT, padx=5)
+
+        # Close Button (✕)
+        close_btn = tk.Button(
+            icons_subframe,
+            text="✕",
+            font=("Arial", 14, "bold"),
+            bg="#fee2e2",
+            fg="#ef4444",
+            activebackground="#fca5a5",
+            activeforeground="#ef4444",
+            relief=tk.FLAT,
+            width=3,
+            height=1,
+            bd=0,
+            command=dialog.destroy,
+            cursor="hand2"
+        )
+        close_btn.pack(side=tk.LEFT, padx=5)
+
+        # Esc key binding to close the window
+        dialog.bind("<Escape>", lambda e: dialog.destroy())
+
+        # Focus on the text area for quick keyboard navigation
+        text_area.focus_set()
+
+    def _populate_analysis_text(self, text_area, text_content: str):
+        """Parse and populate markdown/formula text in text area."""
+        text_area.configure(state=tk.NORMAL)
+        text_area.delete("1.0", tk.END)
+
+        lines = text_content.split("\n")
+        in_code_block = False
+
+        for line in lines:
+            # Code block toggle
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                continue
+
+            if in_code_block:
+                text_area.insert(tk.END, line + "\n", "code")
+                continue
+
+            # Check for block equations
+            if line.strip().startswith("$$") and line.strip().endswith("$$") and len(line.strip()) > 4:
+                math_content = line.strip()[2:-2].strip()
+                text_area.insert(tk.END, f"   {math_content}\n\n", "math_block")
+                continue
+
+            # Check for horizontal rule
+            if line.strip() == "---" or line.strip() == "--- ":
+                text_area.insert(tk.END, "────────────────────────────────────────────────────────────────────────────────\n\n", "separator")
+                continue
+
+            # Check for headers
+            if line.startswith("## "):
+                text_area.insert(tk.END, line[3:] + "\n\n", "h2")
+                continue
+            elif line.startswith("### "):
+                text_area.insert(tk.END, line[4:] + "\n\n", "h3")
+                continue
+            elif line.startswith("#### "):
+                text_area.insert(tk.END, line[5:] + "\n\n", "h4")
+                continue
+
+            # Check for bullet points
+            is_bullet = False
+            bullet_prefix = ""
+            if line.strip().startswith("- ") or line.strip().startswith("* ") or line.strip().startswith("• "):
+                is_bullet = True
+                # Get the leading spaces to preserve indent level
+                leading_spaces = len(line) - len(line.lstrip())
+                bullet_prefix = " " * leading_spaces + "• "
+                line_content = line.strip()[2:]
+            else:
+                line_content = line
+
+            # Parse inline styles like **bold** and `code` and $math$
+            parts = re.split(r"(\*\*.*?\*\*|`.*?`|\$.*?\$)", line_content)
+
+            if is_bullet:
+                text_area.insert(tk.END, bullet_prefix, "bullet")
+
+            for part in parts:
+                if part.startswith("**") and part.endswith("**"):
+                    text_area.insert(tk.END, part[2:-2], ("bold", "bullet" if is_bullet else ""))
+                elif part.startswith("`") and part.endswith("`"):
+                    text_area.insert(tk.END, f" {part[1:-1]} ", ("code", "bullet" if is_bullet else ""))
+                elif part.startswith("$") and part.endswith("$"):
+                    text_area.insert(tk.END, part[1:-1], ("code", "bullet" if is_bullet else ""))
+                else:
+                    text_area.insert(tk.END, part, "bullet" if is_bullet else "")
+
+            text_area.insert(tk.END, "\n")
+
+        text_area.configure(state=tk.DISABLED)
 
     def _on_workspace_change(self, content: str):
         """Handle workspace content change."""
@@ -1059,40 +1430,54 @@ class V3Calculator(ExecuteModeMixin):
     def refresh_model_list(self):
         """Refresh available models."""
         try:
-            model_url = self.model_url_entry.get()
+            model_url = self.model_url_entry.get().strip()
             self.current_model_url = model_url
 
             self.ollama_models = get_available_models(model_url)
-            self.model_selection_combo["values"] = self.ollama_models
 
             if self.ollama_models:
+                self.model_selection_combo["values"] = self.ollama_models
                 if not self.current_model_name or self.current_model_name not in self.ollama_models:
                     self.model_selection_combo.set(self.ollama_models[0])
                     self.current_model_name = self.ollama_models[0]
                 else:
                     self.model_selection_combo.set(self.current_model_name)
+                self.update_status_bar(f"Modeller yenilendi: {len(self.ollama_models)} model bulundu")
             else:
-                self.model_selection_combo.set("")
-                self.current_model_name = ""
-
-            self.update_status_bar(f"Modeller yenilendi: {len(self.ollama_models)} model bulundu")
+                # Hata/bağlantı yok durumunda fallback modeller atanmalıdır
+                fallback_models = ["llama3", "gemma2", "mistral"]
+                self.model_selection_combo["values"] = fallback_models
+                self.model_selection_combo.set(fallback_models[0])
+                self.current_model_name = fallback_models[0]
+                self.update_status_bar("Model bağlantısı kurulamadı; varsayılan model listesi (fallback) yüklendi.")
 
         except Exception as e:
-            messagebox.showerror("Hata", f"Modeller alınırken hata: {str(e)}")
-            self.update_status_bar("Model yenileme başarısız")
+            fallback_models = ["llama3", "gemma2", "mistral"]
+            self.model_selection_combo["values"] = fallback_models
+            self.model_selection_combo.set(fallback_models[0])
+            self.current_model_name = fallback_models[0]
+            messagebox.showerror("Hata", f"Modeller alınırken hata oluştu: {str(e)}")
+            self.update_status_bar("Model yenileme başarısız, varsayılan liste atandı")
 
     def test_model_connection(self):
-        """Test connection to model."""
+        """Test connection to model with detailed Turkish troubleshooting."""
         try:
-            model_url = self.model_url_entry.get()
+            model_url = self.model_url_entry.get().strip()
             if test_connection(model_url):
                 messagebox.showinfo("Bağlantı Başarılı", "Ollama sunucusuna bağlantı başarılı!")
                 self.update_status_bar("Bağlantı başarılı")
             else:
-                messagebox.showerror("Bağlantı Başarısız", "Ollama sunucusuna bağlanılamadı!")
+                messagebox.showerror(
+                    "Bağlantı Başarısız",
+                    "Ollama sunucusuna bağlanılamadı!\n\n"
+                    "Lütfen şunları kontrol edin:\n"
+                    "1. Ollama sunucusunun çalıştığından emin olun (örneğin terminalde 'ollama serve' çalışıyor mu?).\n"
+                    "2. Model URL adresinin doğru olduğunu doğrulayın (varsayılan: http://localhost:11434).\n"
+                    "3. Bilgisayarınızın internet/ağ bağlantısını ve güvenlik duvarı ayarlarını kontrol edin."
+                )
                 self.update_status_bar("Bağlantı başarısız")
         except Exception as e:
-            messagebox.showerror("Hata", f"Bağlantı testi sırasında hata: {str(e)}")
+            messagebox.showerror("Hata", f"Bağlantı testi sırasında beklenmeyen hata: {str(e)}")
             self.update_status_bar("Bağlantı testi başarısız")
 
     def update_status_bar(self, message: str):
@@ -1160,13 +1545,37 @@ class V3Calculator(ExecuteModeMixin):
         return widgets
 
     def _apply_default_geometry(self):
-        """Apply default window geometry."""
-        self.root.update_idletasks()
-        width = self.root.winfo_width()
-        height = self.root.winfo_height()
-        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.root.winfo_screenheight() // 2) - (height // 2)
-        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        """Apply default window geometry exactly (1400x900) centered and brought to front."""
+        def set_geo():
+            self.root.update_idletasks()
+            width = DEFAULT_WINDOW_SIZE[0]
+            height = DEFAULT_WINDOW_SIZE[1]
+            
+            # Ekran boyutu tespiti yap, macOS launcher gibi ortamlardaki uninitialized durumlari yakala
+            screen_w = self.root.winfo_screenwidth()
+            screen_h = self.root.winfo_screenheight()
+            if screen_w < 800: screen_w = 1920
+            if screen_h < 600: screen_h = 1080
+            
+            x = (screen_w // 2) - (width // 2)
+            y = (screen_h // 2) - (height // 2)
+            if x < 0: x = 50
+            if y < 0: y = 50
+            
+            # Pencere boyutunu ve konumunu kesin olarak uygula
+            self.root.geometry(f"{width}x{height}+{x}+{y}")
+            
+            # Pencereyi göster ve en öne çıkar
+            self.root.deiconify()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.focus_force()
+            
+            # 300ms sonra topmost kilidini kaldır (pencerenin hep en üstte kilitli kalmaması için)
+            self.root.after(300, lambda: self.root.attributes("-topmost", False))
+
+        # macOS pencere yöneticisinin hazır olması için 200ms gecikmeyle çağırıyoruz
+        self.root.after(200, set_geo)
 
 
 def main() -> None:

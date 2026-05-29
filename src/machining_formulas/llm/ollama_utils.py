@@ -11,8 +11,8 @@ from typing import Dict, Iterable, List
 from machining_formulas.core.engineering_calculator import EngineeringCalculator
 
 
-_DEFAULT_CHAT_URL = "http://192.168.1.14:11434/api/chat"
-_DEFAULT_TAGS_URL = "http://192.168.1.14:11434/api/tags"
+_DEFAULT_CHAT_URL = "http://localhost:11434/v1/chat"
+_DEFAULT_TAGS_URL = "http://localhost:11434/api/tags"
 
 
 def normalize_chat_url(url: str | None) -> str:
@@ -176,15 +176,19 @@ def build_calculator_tools_definition(
     mass_params: Dict[str, Dict[str, str]] = {
         "shape_key": {
             "type": "string",
-            "description": "Malzemenin şekli (örn: 'triangle', 'circle', 'square').",
+            "description": (
+                "Malzemenin geometrik şekli. Örnekler: 'circle' (daire/silindir), 'square' (kare), "
+                "'rectangle' (dikdörtgen), 'triangle' (üçgen), 'trapezoid' (yamuk), 'tube' (boru). "
+                "Eğer boru kütlesi hesaplanıyorsa 'tube' girilmelidir."
+            ),
         },
         "density": {
             "type": "number",
-            "description": "Malzeme yoğunluğu (g/cm³).",
+            "description": "Malzemenin yoğunluğu (g/cm³). Örnek: Çelik için 7.85, Alüminyum için 2.70, Bakır için 8.96.",
         },
         "length": {
             "type": "number",
-            "description": "Ekstrüzyon uzunluğu (mm).",
+            "description": "Malzemenin ekstrüzyon uzunluğu (mm). Küre ('sphere') dışındaki tüm şekiller için zorunludur. Örnek: 100",
         },
     }
 
@@ -195,14 +199,26 @@ def build_calculator_tools_definition(
             all_shape_params.add(param_name)
 
     for param_name in sorted(all_shape_params):
+        display_name = calculator.PARAM_TURKISH_NAMES.get(param_name, param_name)
+        
+        # Hangi şekillerde bu boyut parametresinin kullanıldığını saptayalım
+        used_in_shapes = []
+        for skey, sname in available_shapes.items():
+            if param_name in calculator.get_shape_parameters(skey):
+                used_in_shapes.append(f"'{skey}' ({sname})")
+        shapes_info = ", ".join(used_in_shapes)
+        
         mass_params[param_name] = {
             "type": "number",
-            "description": f"Şekle özel parametre: {param_name} (mm), varsa.",
+            "description": (
+                f"Şekle özel boyut parametresi: {display_name} ({param_name}) (mm). "
+                f"Sadece şu şekiller için zorunludur/geçerlidir: {shapes_info}."
+            ),
         }
 
     shape_keys = ", ".join(available_shapes.keys())
     mass_params["shape_key"]["description"] = (
-        f"Malzemenin şekli. Geçerli değerler: {shape_keys}."
+        f"Malzemenin geometrik şekli. Geçerli değerler: {shape_keys}."
     )
 
     tools.append(

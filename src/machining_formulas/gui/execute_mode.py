@@ -25,7 +25,13 @@ class ExecuteModeMixin:
         self.execute_mode = True
         self.result_text.insert(
             tk.END,
-            "\n\n--- Execute Modu Aktif --- \nKod seçip Ctrl+C ile çalıştırın.\n",
+            "\n\n--- HESAPLAMA ÇALIŞTIRMA (EXECUTE) MODU AKTİF ---\n"
+            "Kısa Rehber:\n"
+            "1. Çalıştırmak istediğiniz Python ifadesini (örn: 'calc.calculate_turning(\"Cutting speed\", 100, 500)') seçin.\n"
+            "2. Seçilen kodu Ctrl+C tuşlarına basarak çalıştırın.\n"
+            "3. Güvenlik Sınırı: Kod seçimi maksimum 2 kB (2048 karakter) ile sınırlıdır.\n"
+            "4. Güvenli Kapsam: eval() fonksiyonu güvenli bir yerel kapsam içinde çalışır.\n"
+            "--------------------------------------------------\n",
         )
 
     def execute_calculation(self, event: tk.Event | None = None) -> None:
@@ -36,6 +42,13 @@ class ExecuteModeMixin:
             selected_code = self.result_text.get("sel.first", "sel.last")
             if not selected_code:
                 self.result_text.insert(tk.END, "\nSeçili kod yok.\n")
+                return
+
+            # Güvenlik Sınırı Kontrolü: 2 kB (2048 bytes) sınırı
+            if len(selected_code.encode("utf-8")) > 2048:
+                warning_msg = "Seçilen kod boyutu 2 kB sınırını aşmaktadır. Güvenlik nedeniyle işlem iptal edildi."
+                messagebox.showwarning("Güvenlik Sınırı Uyarısı", warning_msg)
+                self.result_text.insert(tk.END, f"\n[İPTAL] {warning_msg}\n")
                 return
 
             calculator = self._get_exec_mode_calculator()

@@ -157,6 +157,7 @@ class WorkspaceBuffer:
             author=author,
         )
         self.edits.append(edit)
+        self._create_version(f"Deleted text from {start} to {end}", [edit.id])
         return edit
 
     def replace_text(self, start: int, end: int, text: str, author: str = "user") -> WorkspaceEdit:
@@ -178,6 +179,7 @@ class WorkspaceBuffer:
             author=author,
         )
         self.edits.append(edit)
+        self._create_version(f"Replaced text from {start} to {end} with '{text}'", [edit.id])
         return edit
 
     def suggest_edit(

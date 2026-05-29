@@ -7,7 +7,7 @@ users and models can edit content together.
 
 import pytest
 from datetime import datetime
-from workspace_buffer import WorkspaceBuffer, WorkspaceEdit, EditType
+from machining_formulas.workspace.workspace_buffer import WorkspaceBuffer, WorkspaceEdit, EditType
 
 
 class TestWorkspaceBuffer:

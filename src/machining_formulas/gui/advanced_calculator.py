@@ -80,7 +80,7 @@ class AdvancedCalculator:
         url_candidates: List[str],
         payload: Dict[str, Any],
         headers: Dict[str, str],
-        timeout: int = 60,
+        timeout: int = 20,
     ) -> Tuple[Any, str, bool]:
         """Try candidate URLs until one succeeds.
 
@@ -96,7 +96,18 @@ class AdvancedCalculator:
                 resp = requests.post(url, json=send_payload, headers=headers, timeout=timeout)
                 # Ollama: non-200 should fall back to next candidate
                 if resp.status_code == 200:
-                    return resp, url, used_legacy
+                    try:
+                        # Test if JSON parsing works
+                        resp.json()
+                        return resp, url, used_legacy
+                    except ValueError as json_err:
+                        last_error = ValueError(f"JSON Ayrıştırma Hatası (Geçersiz Yanıt): {json_err}")
+                else:
+                    last_error = ValueError(f"HTTP {resp.status_code}: {resp.text}")
+            except requests.exceptions.Timeout as t_err:
+                last_error = ValueError(f"Zaman aşımı (Ollama sunucusu {timeout} saniye içinde yanıt vermedi): {t_err}")
+            except requests.exceptions.RequestException as req_err:
+                last_error = ValueError(f"Bağlantı Hatası (Ollama sunucusuna ulaşılamadı): {req_err}")
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
 
@@ -111,7 +122,7 @@ class AdvancedCalculator:
         messages_history: List[Dict[str, Any]],
         tools_definition: List[Dict[str, Any]],
         *,
-        timeout: int = 60,
+        timeout: int = 20,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Send a tool-enabled chat request; if tool_calls come back, execute them once."""
         url_candidates = self._candidate_chat_urls(chat_url)
@@ -220,7 +231,7 @@ class AdvancedCalculator:
             url_candidates,
             payload,
             headers,
-            timeout=60,
+            timeout=20,
         )
 
         self.current_chat_url = used_url
