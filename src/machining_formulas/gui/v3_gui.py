@@ -121,6 +121,7 @@ class V3Calculator(ExecuteModeMixin):
         self.root.focus_set()
 
         self.root.after(100, self._setup_navigation_bindings)
+        self.root.after(150, self._setup_keyboard_shortcuts)
         self.root.after(1000, self._setup_focus_management)
 
     def _setup_navigation_bindings(self):
@@ -347,6 +348,7 @@ class V3Calculator(ExecuteModeMixin):
         ttk.Label(density_frame, text="Yoğunluk:", width=15).pack(side="left")
         self.mass_density = ttk.Entry(density_frame, width=15)
         self.mass_density.pack(side="left", padx=(5, 0))
+        self.mass_density.bind("<Return>", lambda _e: self._calculate_mass())
         ttk.Label(density_frame, text="g/cm³").pack(side="left", padx=(2, 0))
 
         self.mass_material = ttk.Combobox(
@@ -625,6 +627,7 @@ class V3Calculator(ExecuteModeMixin):
 
             entry = ttk.Entry(row, width=15)
             entry.pack(side="left", padx=(5, 0))
+            entry.bind("<Return>", lambda _e, sk=state_key: self._dynamic_calc_calculate(sk))
 
             unit = p.get("unit", "")
             if unit:
@@ -718,32 +721,117 @@ class V3Calculator(ExecuteModeMixin):
 
     def _create_menu_bar(self):
         """Create menu bar."""
+        import sys
+        is_mac = sys.platform == "darwin"
+        mod_text = "Cmd+" if is_mac else "Ctrl+"
+
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
 
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Dosya", menu=file_menu)
-        file_menu.add_command(label="Yeni Çalışma Alanı", command=self._new_workspace)
-        file_menu.add_command(label="Aç...", command=self._open_workspace)
-        file_menu.add_command(label="Kaydet...", command=self._save_workspace)
+        file_menu.add_command(label="Yeni Çalışma Alanı", accelerator=f"{mod_text}N", command=self._new_workspace)
+        file_menu.add_command(label="Aç...", accelerator=f"{mod_text}O", command=self._open_workspace)
+        file_menu.add_command(label="Kaydet...", accelerator=f"{mod_text}S", command=self._save_workspace)
         file_menu.add_separator()
-        file_menu.add_command(label="Dışa Aktar...", command=self._export_workspace)
+        file_menu.add_command(label="Dışa Aktar...", accelerator=f"{mod_text}E", command=self._export_workspace)
         file_menu.add_separator()
-        file_menu.add_command(label="Çıkış", command=self.root.quit)
+        file_menu.add_command(label="Çıkış", accelerator=f"{mod_text}Q", command=self.root.quit)
 
         edit_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Düzenle", menu=edit_menu)
-        edit_menu.add_command(label="Geri Al", command=self.workspace_editor._undo)
-        edit_menu.add_command(label="İleri Al", command=self.workspace_editor._redo)
+        edit_menu.add_command(label="Geri Al", accelerator=f"{mod_text}Z", command=self.workspace_editor._undo)
+        edit_menu.add_command(label="İleri Al", accelerator=f"{mod_text}Shift+Z" if is_mac else f"{mod_text}Y", command=self.workspace_editor._redo)
         edit_menu.add_separator()
-        edit_menu.add_command(label="Temizle", command=self.workspace_editor._clear_workspace)
+        edit_menu.add_command(label="Temizle", accelerator=f"{mod_text}L", command=self.workspace_editor._clear_workspace)
 
         model_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Model", menu=model_menu)
-        model_menu.add_command(label="Bağlantı Testi", command=self.test_model_connection)
-        model_menu.add_command(label="Modelleri Yenile", command=self.refresh_model_list)
+        model_menu.add_command(label="Bağlantı Testi", accelerator=f"{mod_text}Shift+T", command=self.test_model_connection)
+        model_menu.add_command(label="Modelleri Yenile", accelerator=f"{mod_text}R", command=self.refresh_model_list)
         model_menu.add_separator()
-        model_menu.add_command(label="Çalışma Alanını Analiz Et", command=self._analyze_workspace)
+        model_menu.add_command(label="Çalışma Alanını Analiz Et", accelerator=f"{mod_text}Shift+A", command=self._analyze_workspace)
+
+    def _setup_keyboard_shortcuts(self):
+        """Configure macOS-prioritized, cross-platform keyboard shortcuts for menus and tabs."""
+        import sys
+        is_mac = sys.platform == "darwin"
+
+        def _bind(key, callback, is_shift=False):
+            shift_str = "Shift-" if is_shift else ""
+
+            # Control bindings
+            self.root.bind_all(f"<Control-{shift_str}{key.lower()}>", lambda event: callback())
+            self.root.bind_all(f"<Control-{shift_str}{key.upper()}>", lambda event: callback())
+
+            # Command bindings on macOS
+            if is_mac:
+                self.root.bind_all(f"<Command-{shift_str}{key.lower()}>", lambda event: callback())
+                self.root.bind_all(f"<Command-{shift_str}{key.upper()}>", lambda event: callback())
+
+        # File Operations
+        _bind("n", self._new_workspace)
+        _bind("o", self._open_workspace)
+        _bind("s", self._save_workspace)
+        _bind("e", self._export_workspace)
+        _bind("q", lambda: self.root.quit())
+
+        # Edit Operations
+        _bind("z", self.workspace_editor._undo)
+        _bind("y", self.workspace_editor._redo)
+        _bind("z", self.workspace_editor._redo, is_shift=True)  # Cmd+Shift+Z for macOS
+        _bind("l", self.workspace_editor._clear_workspace)
+
+        # Model & AI Operations
+        _bind("t", self.test_model_connection, is_shift=True)  # Cmd+Shift+T
+        _bind("r", self.refresh_model_list)
+        _bind("a", self._analyze_workspace, is_shift=True)  # Cmd+Shift+A
+
+        # Tab Navigation
+        _bind("1", lambda: self.calc_notebook.select(0))
+        _bind("2", lambda: self.calc_notebook.select(1))
+        _bind("3", lambda: self.calc_notebook.select(2))
+        _bind("4", lambda: self.calc_notebook.select(3))
+
+        # Help Shortcuts (F1, Cmd+Slash, Cmd+Shift+Slash)
+        self.root.bind_all("<F1>", lambda event: self._show_shortcuts_help())
+        self.root.bind_all("<Help>", lambda event: self._show_shortcuts_help())
+        _bind("slash", self._show_shortcuts_help)
+        _bind("question", self._show_shortcuts_help)
+
+    def _show_shortcuts_help(self):
+        """Display a comprehensive help dialog for keyboard shortcuts."""
+        import sys
+        mod = "Cmd" if sys.platform == "darwin" else "Ctrl"
+
+        help_text = (
+            "⌨️ Klavye Kısayolları (Keyboard Shortcuts)\n"
+            "==========================================\n\n"
+            "📂 Dosya İşlemleri:\n"
+            f"  • {mod}+N : Yeni Çalışma Alanı\n"
+            f"  • {mod}+O : Aç...\n"
+            f"  • {mod}+S : Kaydet...\n"
+            f"  • {mod}+E : Dışa Aktar...\n"
+            f"  • {mod}+Q : Çıkış\n\n"
+            "📝 Düzenleme ve Düzenleyici:\n"
+            f"  • {mod}+Z : Geri Al\n"
+            f"  • {mod}+Y veya {mod}+Shift+Z : İleri Al\n"
+            f"  • {mod}+L : Çalışma Alanını Temizle\n\n"
+            "🤖 Yapay Zeka ve Model İşlemleri:\n"
+            f"  • {mod}+Shift+A : Çalışma Alanını Analiz Et\n"
+            f"  • {mod}+Shift+T : Model Bağlantı Testi\n"
+            f"  • {mod}+R : Modelleri Yenile\n\n"
+            "🗂️ Hesaplama Sekmeleri Arasında Geçiş:\n"
+            f"  • {mod}+1 : Tornalama Sekmesi\n"
+            f"  • {mod}+2 : Frezeleme Sekmesi\n"
+            f"  • {mod}+3 : Malzeme Sekmesi\n"
+            f"  • {mod}+4 : Delme Sekmesi\n\n"
+            "⚡ Diğer Kolaylıklar:\n"
+            "  • Enter (Giriş) : Sayısal parametre alanlarında doğrudan Hesapla tetikler\n"
+            "  • Esc : Çıkan diyalog veya popup pencereleri kapatır\n"
+            "  • F1 veya Cmd+/ : Bu kısayol yardım menüsünü açar\n"
+        )
+        messagebox.showinfo("Klavye Kısayolları", help_text)
 
     def _create_status_bar(self):
         """Create status bar."""
@@ -802,9 +890,9 @@ class V3Calculator(ExecuteModeMixin):
                 ec.PARAM_TURKISH_NAMES.get(param_name, param_name.capitalize()),
             )
             ttk.Label(frame, text=f"{display_name}:", width=15).pack(side="left")
-
             entry = ttk.Entry(frame, width=15)
             entry.pack(side="left", padx=(5, 0))
+            entry.bind("<Return>", lambda _e: self._calculate_mass())
 
             self.mass_param_widgets[param_name] = entry
 
@@ -814,6 +902,7 @@ class V3Calculator(ExecuteModeMixin):
             ttk.Label(length_frame, text="Uzunluk:", width=15).pack(side="left")
             length_entry = ttk.Entry(length_frame, width=15)
             length_entry.pack(side="left", padx=(5, 0))
+            length_entry.bind("<Return>", lambda _e: self._calculate_mass())
             self.mass_param_widgets["length"] = length_entry
 
         self.mass_params_frame.update_idletasks()
