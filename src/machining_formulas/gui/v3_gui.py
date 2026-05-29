@@ -54,7 +54,7 @@ class V3Calculator(ExecuteModeMixin):
         self._tool_assistant = AdvancedCalculator()
 
         # Keep references to PhotoImage instances
-        self._header_images: Dict[str, tk.PhotoImage] = {}
+        self._header_images: Dict[str, ImageTk.PhotoImage | tk.PhotoImage] = {}
 
         # State containers for dynamic calculation UIs (turning/milling)
         self._dynamic_calc_state: Dict[str, dict] = {}
