@@ -387,11 +387,12 @@ class V3Calculator(ExecuteModeMixin):
             drilling_frame, image_filename="drilling.png", fallback_text="Delme"
         )
 
-        ttk.Label(
-            drilling_frame,
-            text="Delme hesaplamaları yakında eklenecek...",
-            font=("Arial", 10),
-        ).pack(pady=20)
+        self._init_dynamic_calc_ui(
+            parent=drilling_frame,
+            calc_category_key="drilling",
+            calc_type_display="Delik Delme Hesaplamaları",
+            state_key="drilling",
+        )
 
     def _assets_image_path(self, image_filename: str) -> Path:
         """Resolve an image under assets/images/ relative to repository root."""
@@ -665,6 +666,8 @@ class V3Calculator(ExecuteModeMixin):
                 result_dict = ec.calculate_turning(method_key, *args)
             elif state["category"] == "milling":
                 result_dict = ec.calculate_milling(method_key, *args)
+            elif state["category"] == "drilling":
+                result_dict = ec.calculate_drilling(method_key, *args)
             else:
                 raise ValueError(f"Desteklenmeyen kategori: {state['category']}")
 
@@ -896,8 +899,8 @@ class V3Calculator(ExecuteModeMixin):
 
                 system_prompt = (
                     "Sen uzman bir talaşlı imalat hesap asistanısın. "
-                    "Sayısal hesap veya kütle/hacim hesabı gereken durumlarda KESİNLİKLE araçları (tools) kullanmalısın! "
-                    "Kendi kendine sayısal tahmin veya yuvarlama yapma, araçtan dönen hassas değerleri referans al.\n\n"
+                    "DİKKAT: Sayısal hesap veya kütle/hacim hesabı gereken durumlarda KESİNLİKLE araçları (tools) kullanmalısın! "
+                    "Eğer sayısal veri varsa hesaplamayı sen YAPMA, sadece aracı çağır. Kendi kendine sayısal tahmin veya yuvarlama yapma, araçtan dönen hassas değerleri referans al.\n\n"
                     "Yanıtını her zaman son derece profesyonel, temiz bir mühendislik raporu formatında sun. "
                     "Eğer bir hesaplama yapıldıysa, aşağıdaki şablonu tam olarak kullanarak raporla:\n\n"
                     "📊 MÜHENDİSLİK HESAPLAMA RAPORU\n"
@@ -948,12 +951,19 @@ class V3Calculator(ExecuteModeMixin):
 
         # Aksi halde: mevcut davranış (metni iyileştir)
         try:
-            self.update_status_bar("Model önerisi isteniyor...")
+            self.update_status_bar("Model önerisi (tool destekli) isteniyor...")
+
+            if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
+                self._tool_assistant = AdvancedCalculator()
+
+            chat_url = normalize_chat_url(self.current_model_url)
+            tools_def = build_calculator_tools_definition(ec)
 
             prompt = (
                 "Aşağıdaki çalışma alanı metnini düzenle, teknik olarak daha okunabilir ve yapılandırılmış hale getir. "
                 "Eğer metinde ham hesaplama verileri, peş peşe eklenmiş sonuçlar veya düzensiz notlar varsa, "
                 "bunları uyumlu bir mühendislik raporu/notu formatında toparla.\n\n"
+                "Metni düzenlerken, metinde geçen hesaplamaları (kesme hızı, kütle vb.) tespit et ve bu değerleri doğrulamak için MUTLAKA araçları (tools) çağır. Eğer metindeki değer hatalıysa, araçtan dönen doğru sonucu kullanarak metni düzelt.\n\n"
                 "ÇOK ÖNEMLİ KURALLAR:\n"
                 "1. SADECE düzenlenmiş metni döndür. Kod bloğu (```) bile kullanma, doğrudan metni yaz.\n"
                 "2. 'İşte metnin düzenlenmiş hali', 'Değişikliklerin Gerekçesi', 'Açıklama' gibi sohbet, giriş ve çıkış cümleleri KESİNLİKLE KULLANMA.\n"
@@ -962,15 +972,22 @@ class V3Calculator(ExecuteModeMixin):
                 f"{context}"
             )
 
-            response = single_chat_request(
-                self.current_model_url,
+            messages = [
+                {"role": "user", "content": prompt},
+            ]
+
+            assistant_msg, _updated = self._tool_assistant.chat_with_tools(
+                chat_url,
                 self.current_model_name,
-                prompt,
+                messages,
+                tools_def,
                 timeout=120,
             )
 
+            response = str(assistant_msg.get("content", "")).strip() or context
+
             current_content = self.workspace_editor.get_current_content()
-            self.workspace_buffer.suggest_edit(0, len(current_content), str(response))
+            self.workspace_buffer.suggest_edit(0, len(current_content), response)
 
             self.workspace_editor._show_suggestions()
             self.update_status_bar("Model önerisi eklendi")
@@ -1092,19 +1109,52 @@ class V3Calculator(ExecuteModeMixin):
             return
 
         try:
-            self.update_status_bar("Çalışma alanı analiz ediliyor...")
+            self.update_status_bar("Çalışma alanı (tool destekli) analiz ediliyor...")
+
+            if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
+                self._tool_assistant = AdvancedCalculator()
+
+            chat_url = normalize_chat_url(self.current_model_url)
+            tools_def = build_calculator_tools_definition(ec)
 
             content = self.workspace_editor.get_current_content()
-            context = f"Bu mühendislik çalışma alanını analiz et ve öneriler sun: {content}"
+            
+            system_prompt = (
+                "Sen uzman bir talaşlı imalat hesap analistisin. Görevin, sana verilen çalışma alanındaki tüm hesaplamaları tespit etmek, "
+                "bu hesaplamaları doğrulamak için paralel olarak araçları (tools) çağırmak ve bir analiz raporu oluşturmaktır.\n\n"
+                "ANALİZ VE YARATICILIK KURALLARI:\n"
+                "1. Metindeki matematiksel parametreleri bul ve doğrulamak için öncelikle sana sunulan mevcut gerçek araçları (tools) kullan.\n"
+                "2. Eğer çalışma alanında sayısal veriler veya formüller yoksa, ya da kullanıcının girdiği bağlam çok sınırlıysa (örn: sadece bir başlık varsa), "
+                "bunu katı bir şekilde reddetmek yerine olumlu bir çabayla bir analiz taslağı (şablon referans) oluştur. "
+                "Bu taslakta, konunun gerektirebileceği teorik parametreleri varsayılan taslak değerlerle göster ve analiz sürecinin nasıl mükemmel bir referans olacağını açıkla.\n"
+                "3. KESİNLİKLE gerçek araç çağrıları ile kendi ürettiğin taslak değerleri birbirine karıştırma! Eğer bir değeri doğrulamak için gerçek bir araç (tool) KULLANMADIYSAN, "
+                "raporda veya tabloda bunu 'Taslak/Simüle' olarak açıkça belirt.\n"
+                "4. Eğer doğrulamak istediğin bir parametre için sana sunulan araç listesinde uygun bir araç yoksa (örneğin Tezgah Rijitliği veya Malzeme Mukavemeti için), "
+                "bunu simüle etmek yerine 'Böyle bir araca (örn: Machine Rigidity Calculator) ihtiyaç duyulmaktadır, sisteme eklenmesi önerilir' şeklinde tarif et ve geliştiricilerden talep et.\n"
+                "5. Nihai Doğrulama Tablosunda durumları şu şekilde etiketle:\n"
+                "   - '✅ Gerçek Araçla Doğrulandı' (Sana sunulan mevcut araçlarla doğrulananlar için)\n"
+                "   - '💡 Yeni Araç Önerisi' (Mevcut listemizde olmayıp sisteme eklenmesini önerdiğin araçlar için)\n"
+                "   - '📝 Taslak/Referans' (Teorik olarak varsaydığın veya simüle ettiğin değerler için)"
+            )
+            
+            user_prompt = f"Çalışma alanı içeriği:\n\n{content}"
 
-            response = single_chat_request(
-                self.current_model_url,
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            assistant_msg, _updated = self._tool_assistant.chat_with_tools(
+                chat_url,
                 self.current_model_name,
-                context,
+                messages,
+                tools_def,
                 timeout=120,
             )
 
-            self._show_analysis_result(str(response))
+            response = str(assistant_msg.get("content", "")).strip() or "Analiz sonucunda modelden geçerli bir yanıt alınamadı."
+
+            self._show_analysis_result(response)
             self.update_status_bar("Analiz tamamlandı")
 
         except Exception as e:
@@ -1230,7 +1280,7 @@ class V3Calculator(ExecuteModeMixin):
                     self.current_model_url,
                     self.current_model_name,
                     context,
-                    timeout=20,
+                    timeout=120,
                 )
 
                 self._populate_analysis_text(text_area, str(new_response))

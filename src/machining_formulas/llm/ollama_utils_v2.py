@@ -20,7 +20,7 @@ def single_chat_request(
     model_url: str,
     model_name: str,
     prompt: str,
-    timeout: int = 20,
+    timeout: int = 60,
     **kwargs,
 ) -> str | Dict[str, Any]:
     """Send a single chat request to Ollama API with endpoint fallbacks."""
@@ -104,7 +104,7 @@ def chat_with_ollama(
     model_name: str,
     messages: List[Dict[str, str]],
     tools: Optional[List[Dict[str, Any]]] = None,
-    timeout: int = 20,
+    timeout: int = 60,
 ) -> Dict[str, Any]:
     """Send chat request to Ollama with optional tool support and candidate fallbacks."""
     url_candidates = candidate_chat_urls(model_url)

@@ -27,7 +27,7 @@ def _extract_tool_names(tools_def: list[dict]) -> list[str]:
     return names
 
 
-def test_tools_definition_covers_all_turning_and_milling_formulas():
+def test_tools_definition_covers_all_formulas():
     calc = EngineeringCalculator()
     tools_def = build_calculator_tools_definition(calc)
     names = set(_extract_tool_names(tools_def))
@@ -37,6 +37,8 @@ def test_tools_definition_covers_all_turning_and_milling_formulas():
         expected.add(f"calculate_turning_{_slugify_like_schema(key)}")
     for key in calc.milling_definitions.keys():
         expected.add(f"calculate_milling_{_slugify_like_schema(key)}")
+    for key in getattr(calc, 'drilling_definitions', {}).keys():
+        expected.add(f"calculate_drilling_{_slugify_like_schema(key)}")
     expected.add("calculate_material_mass")
 
     assert names == expected
@@ -100,6 +102,26 @@ def test_milling_schema_required_matches_calculator_param_meta():
         assert tool is not None, f"Tool bulunamadı: {tool_name}"
 
         params_meta = calc.get_calculation_params("milling", calc_name)
+        expected_required = [p["name"] for p in params_meta]
+
+        required = ((tool.get("function") or {}).get("parameters") or {}).get("required")
+        assert required == expected_required
+
+
+def test_drilling_schema_required_matches_calculator_param_meta():
+    """Tool şemasındaki required alanları calculator metadata ile uyumlu olmalı."""
+    calc = EngineeringCalculator()
+    tools_def = build_calculator_tools_definition(calc)
+
+    for calc_name in getattr(calc, 'drilling_definitions', {}).keys():
+        tool_name = f"calculate_drilling_{_slugify_like_schema(calc_name)}"
+        tool = next(
+            (t for t in tools_def if (t.get("function") or {}).get("name") == tool_name),
+            None,
+        )
+        assert tool is not None, f"Tool bulunamadı: {tool_name}"
+
+        params_meta = calc.get_calculation_params("drilling", calc_name)
         expected_required = [p["name"] for p in params_meta]
 
         required = ((tool.get("function") or {}).get("parameters") or {}).get("required")

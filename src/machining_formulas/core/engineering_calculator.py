@@ -183,6 +183,48 @@ class EngineeringCalculator:
                 },
             },
         }
+        self.drilling_definitions = {
+            "Cutting speed": {
+                "formula": lambda Dc, n: (Dc * math.pi * n) / 1000,
+                "units": {
+                    "Dc": "mm (drill diameter)",
+                    "n": "rpm (spindle speed)",
+                    "result": "m/min",
+                },
+            },
+            "Spindle speed": {
+                "formula": lambda Vc, Dc: (Vc * 1000) / (math.pi * Dc),
+                "units": {
+                    "Vc": "m/min (cutting speed)",
+                    "Dc": "mm (drill diameter)",
+                    "result": "rpm",
+                },
+            },
+            "Feed rate": {
+                "formula": lambda fn, n: (fn * n),
+                "units": {
+                    "fn": "mm/rev (feed per revolution)",
+                    "n": "rpm (spindle speed)",
+                    "result": "mm/min",
+                },
+            },
+            "Metal removal rate": {
+                "formula": lambda Dc, Vf: (math.pi * (Dc**2) * Vf) / 4000,
+                "units": {
+                    "Dc": "mm (drill diameter)",
+                    "Vf": "mm/min (feed rate)",
+                    "result": "cm³/min",
+                },
+            },
+            "Machining time": {
+                "formula": lambda lm, Vf: (lm / Vf),
+                "units": {
+                    "lm": "mm (hole depth)",
+                    "Vf": "mm/min (feed rate)",
+                    "result": "min",
+                },
+            },
+        }
 
     def calculate_material_mass(
         self, shape: str, density: float, *args: Union[float, int]
@@ -235,12 +277,31 @@ class EngineeringCalculator:
                 f"Incorrect arguments for milling calculation {definition}: {str(e)}"
             )
 
+    def calculate_drilling(
+        self, definition: str, *args: Union[float, int]
+    ) -> Dict[str, Any]:
+        """Calculate drilling parameters based on the provided definition."""
+        try:
+            calc_definition = self.drilling_definitions[definition]
+            calculated_value = calc_definition["formula"](*args)
+            return {
+                "value": calculated_value,
+                "units": calc_definition["units"]["result"],
+            }
+        except KeyError:
+            raise ValueError(f"Invalid drilling calculation: {definition}")
+        except TypeError as e:
+            raise ValueError(
+                f"Incorrect arguments for drilling calculation {definition}: {str(e)}"
+            )
+
     def get_available_calculations(self) -> Dict[str, List[str]]:
         """Return a list of supported calculation keys."""
         return {
             "shapes": list(self.shape_definitions.keys()),
             "turning": list(self.turning_definitions.keys()),
             "milling": list(self.milling_definitions.keys()),
+            "drilling": list(self.drilling_definitions.keys()),
         }
 
     def get_material_density(self, material: str) -> float:
@@ -287,6 +348,7 @@ class EngineeringCalculator:
         "ae": "Yanal Kesme Derinliği",
         "Pc": "Net Güç (Pc)",
         "z": "Diş Sayısı (z)",
+        "Dc": "Matkap Çapı",
         "radius": "Yarıçap",
         "width": "Genişlik",
         "height": "Yükseklik",
@@ -306,6 +368,7 @@ class EngineeringCalculator:
         definitions_map = {
             "turning": self.turning_definitions,
             "milling": self.milling_definitions,
+            "drilling": self.drilling_definitions,
         }
 
         if calc_category_key not in definitions_map:

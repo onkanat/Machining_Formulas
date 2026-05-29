@@ -302,3 +302,51 @@ def test_handle_tool_calls_history_role_tool_sequence():
     assert calculator.history[0]["tool_call_id"] == "call-1"
     assert "157.08" in calculator.history[0]["content"]
 
+
+def test_handle_tool_calls_drilling_success():
+    """Verify that calculate_drilling_* tool calls are successfully executed and returned."""
+    calculator = _build_calculator_stub()
+
+    expected_response = {
+        "message": {
+            "role": "assistant",
+            "content": "Matkap kesme hızı hesaplandı."
+        }
+    }
+
+    def fake_post_chat(url_candidates, payload, headers, timeout=60):
+        return DummyResponse(expected_response), url_candidates[0], False
+
+    calculator._post_chat_with_legacy_support = fake_post_chat
+
+    messages_history = [{"role": "system", "content": "Sistem"}]
+    
+    tool_calls = [
+        {
+            "id": "call-drilling-1",
+            "function": {
+                "name": "calculate_drilling_cutting_speed",
+                "arguments": {"Dc": 10, "n": 1000}
+            }
+        }
+    ]
+
+    calculator.history = []
+    
+    assistant_message, updated_history = calculator.handle_tool_calls(
+        "http://localhost:11434/v1/chat",
+        "llama3",
+        messages_history,
+        tool_calls,
+        []
+    )
+    
+    assert assistant_message == expected_response["message"]
+    
+    # Assert self.history contains the tool message with correct value (approx 31.42)
+    assert len(calculator.history) == 1
+    assert calculator.history[0]["role"] == "tool"
+    assert calculator.history[0]["tool_call_id"] == "call-drilling-1"
+    assert "31.42" in calculator.history[0]["content"]
+
+

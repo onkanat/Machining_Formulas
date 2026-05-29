@@ -80,7 +80,7 @@ class AdvancedCalculator:
         url_candidates: List[str],
         payload: Dict[str, Any],
         headers: Dict[str, str],
-        timeout: int = 20,
+        timeout: int = 60,
     ) -> Tuple[Any, str, bool]:
         """Try candidate URLs until one succeeds.
 
@@ -122,7 +122,7 @@ class AdvancedCalculator:
         messages_history: List[Dict[str, Any]],
         tools_definition: List[Dict[str, Any]],
         *,
-        timeout: int = 20,
+        timeout: int = 60,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Send a tool-enabled chat request; if tool_calls come back, execute them once."""
         url_candidates = self._candidate_chat_urls(chat_url)
@@ -153,6 +153,7 @@ class AdvancedCalculator:
                 list(messages_history),
                 tool_calls,
                 tools_definition,
+                timeout=timeout,
             )
 
         updated_history = list(messages_history) + [assistant_message]
@@ -167,6 +168,8 @@ class AdvancedCalculator:
         messages_history: List[Dict[str, Any]],
         tool_calls: List[Dict[str, Any]],
         _tools_definition: List[Dict[str, Any]],
+        *,
+        timeout: int = 60,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Execute tool calls, append tool outputs, then ask the model for follow-up.
 
@@ -231,7 +234,7 @@ class AdvancedCalculator:
             url_candidates,
             payload,
             headers,
-            timeout=20,
+            timeout=timeout,
         )
 
         self.current_chat_url = used_url
@@ -343,6 +346,26 @@ class AdvancedCalculator:
                 content=content,
             )
 
+        if tool_name.startswith("calculate_drilling_"):
+            method_slug = tool_name.removeprefix("calculate_drilling_")
+            method_key = self._resolve_method_key(
+                calc.drilling_definitions.keys(),
+                method_slug,
+            )
+            value, unit = self._run_calc_with_metadata(
+                calc,
+                "drilling",
+                method_key,
+                arguments,
+            )
+            content = self._format_value_with_unit(value, unit)
+            return _ToolRunResult(
+                tool_name=tool_name,
+                value=value,
+                unit=unit,
+                content=content,
+            )
+
         raise ValueError(f"Bilinmeyen tool: {tool_name}")
 
     def _resolve_method_key(
@@ -378,6 +401,8 @@ class AdvancedCalculator:
             result = calc.calculate_turning(method_key, *args)
         elif category == "milling":
             result = calc.calculate_milling(method_key, *args)
+        elif category == "drilling":
+            result = calc.calculate_drilling(method_key, *args)
         else:
             raise ValueError(f"Desteklenmeyen kategori: {category}")
 

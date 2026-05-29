@@ -173,6 +173,32 @@ def build_calculator_tools_definition(
             }
         )
 
+    if hasattr(calculator, 'drilling_definitions'):
+        for calc_name in calculator.drilling_definitions.keys():
+            params_info = calculator.get_calculation_params("drilling", calc_name)
+            properties = {
+                param["name"]: {
+                    "type": "number",
+                    "description": f"{param['display_text_turkish']} ({param['unit']})",
+                }
+                for param in params_info
+            }
+            required = [param["name"] for param in params_info]
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "calculate_drilling_" + f"{calc_name.replace(' ', '_').lower()}",
+                        "description": f"Delik delme işlemi için '{calc_name}' hesaplaması yapar.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": properties,
+                            "required": required,
+                        },
+                    },
+                }
+            )
+
     mass_params: Dict[str, Dict[str, str]] = {
         "shape_key": {
             "type": "string",
