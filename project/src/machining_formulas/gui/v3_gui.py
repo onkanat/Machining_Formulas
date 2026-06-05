@@ -67,7 +67,7 @@ class V3Calculator(ExecuteModeMixin):
         self.workspace_buffer = WorkspaceBuffer()
 
         # Model configuration
-        self.current_model_url = "http://localhost:11434"
+        self.current_model_url = "http://192.168.1.14:11434"
         self.current_model_name = ""
         self.ollama_models: List[str] = []
 

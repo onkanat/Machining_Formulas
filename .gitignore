@@ -33,3 +33,5 @@ dist/
 # Editor
 .vscode/
 
+# Agent metadata
+.antigravitycli/

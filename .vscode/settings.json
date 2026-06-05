@@ -19,13 +19,13 @@
     "python.analysis.typeCheckingMode": "basic",
     "python.defaultInterpreterPath": "/Users/hakankilicaslan/GitHub/Machining_Formulas/.venv/bin/python",
     "python.analysis.extraPaths": [
-        "${workspaceFolder}/src"
+        "${workspaceFolder}/project/src"
     ],
     "python.autoComplete.extraPaths": [
-        "${workspaceFolder}/src"
+        "${workspaceFolder}/project/src"
     ],
     "[python]": {
-        "editor.defaultFormatter": "ms-python.autopep8"
+        "editor.defaultFormatter": "ms-python.python"
     },
     "python.formatting.provider": "none",
     "python.linting.enabled": true,
