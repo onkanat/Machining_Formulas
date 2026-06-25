@@ -20,14 +20,19 @@ Proje, **V3** sürümüyle birlikte modern bir mimariye kavuşmuştur:
 
 ## Teknik Borçlar (Tech Debt)
 
-### 1. Legacy Kod Temizliği
-- **Açıklama:** Kök dizinde yer alabilecek eski GUI komut dosyaları (örneğin `horz_gui.py`, `v3_gui_direct.py`) varsa, bunlar V3 mimarisinin yerine geçmemelidir.
-- **Çözüm:** Bu dosyalar analiz edilmeli ve işlevleri tamamen V3'e aktarıldıktan sonra silinmelidir.
+### 1. Legacy Kod Temizliği (Çözüldü)
+- **Açıklama:** Kök dizinde veya `project/` altında bulunabilecek eski GUI komut dosyaları (örn. `horz_gui.py`, `v3_gui_direct.py`) temizlenmiştir.
+- **Çözüm:** Proje genelinde yapılan kontrollerle bu dosyaların tamamen silindiği ve V3 mimarisine geçişin tamamlandığı doğrulanmıştır.
 
-### 2. Ollama API Hata Yönetimi & Hız Limitleri
-- **Açıklama:** Ollama sunucusuyla iletişim kurarken ağ kesintileri veya yavaş yanıtlar için timeout 20 saniye olarak belirlenmiştir. Ancak sunucu çevrimdışı olduğunda kullanıcı arayüzünde daha yumuşak (graceful) hata mesajları gösterilmelidir.
-- **Çözüm:** `ollama_utils_v2.py` içindeki API çağrılarına daha kapsamlı hata yakalama ve retry mekanizmaları eklenmelidir.
+### 2. Ollama API Hata Yönetimi & Hız Limitleri (Kısmen Çözüldü)
+- **Açıklama:** Ollama sunucusuyla iletişim kurarken ağ kesintileri veya yavaş yanıtlar için arayüzde graceful hata yakalama (MessageBox, loglama) sağlanmıştır. Ancak retry mekanizmaları henüz eklenmemiştir.
+- **Çözüm:** Arayüz katmanındaki `try...except` blokları doğrulanmıştır. Daha kapsamlı retry mantığı `ollama_utils_v2.py` içine eklenebilir.
 
-### 3. Testlerde Ollama Bağımlılığı
-- **Açıklama:** Bazı testler Ollama API'sinin ayakta olmasını bekleyebilir veya varsayabilir.
-- **Çözüm:** Ollama bağımlı testlerin tamamının ağ erişimi gerektirmeyecek şekilde mock'landığından emin olunmalıdır.
+### 3. Testlerde Ollama Bağımlılığı (Çözüldü)
+- **Açıklama:** Testlerin ağ erişimi veya canlı Ollama API'si olmadan çalışabilmesi gerekmektedir.
+- **Çözüm:** Tüm testlerin (50 passed) mock yapısı veya izole calculator sınıflarıyla çalıştığı, canlı ağ çağrıları yapmadığı doğrulanmıştır.
+
+### 4. Ollama Sunucu Adresi Kalıcılığı (Açık Teknik Borç)
+- **Açıklama:** `ollama_utils.py` (L19) ve `v3_gui.py` (L70) dosyalarında varsayılan Ollama adresi olarak `http://192.168.1.14:11434` adresi hardcoded olarak tanımlanmıştır. Kullanıcının son başarılı bağlantı kurduğu adres kalıcı hale getirilmemektedir.
+- **Çözüm:** Varsayılan olarak `localhost` adresi kullanılmalı ve son başarılı bağlantı adresi yerel bir yapılandırma dosyası (örn. `.config` veya `settings.json`) aracılığıyla saklanarak uygulama açılışında oradan yüklenmelidir.
+
