@@ -67,8 +67,9 @@ class V3Calculator(ExecuteModeMixin):
         self.workspace_buffer = WorkspaceBuffer()
 
         # Model configuration
-        self.current_model_url = "http://192.168.1.14:11434"
-        self.current_model_name = ""
+        settings = self._load_settings()
+        self.current_model_url = settings.get("ollama_url", "http://localhost:11434")
+        self.current_model_name = settings.get("model_name", "")
         self.ollama_models: List[str] = []
 
         # Cache frequently used data for performance
@@ -264,6 +265,7 @@ class V3Calculator(ExecuteModeMixin):
             model_frame_inner, width=25, style="Calc.TCombobox"
         )
         self.model_selection_combo.pack(side="left", fill="x", expand=True, padx=(5, 0))
+        self.model_selection_combo.bind("<<ComboboxSelected>>", self._on_model_selection_change)
 
         ttk.Button(
             model_frame_inner, text="🔗", command=self.test_model_connection, width=3
@@ -1616,6 +1618,7 @@ class V3Calculator(ExecuteModeMixin):
                 else:
                     self.model_selection_combo.set(self.current_model_name)
                 self.update_status_bar(f"Modeller yenilendi: {len(self.ollama_models)} model bulundu")
+                self._save_settings()
             else:
                 # Hata/bağlantı yok durumunda fallback modeller atanmalıdır
                 fallback_models = ["llama3", "gemma2", "mistral"]
@@ -1637,6 +1640,8 @@ class V3Calculator(ExecuteModeMixin):
         try:
             model_url = self.model_url_entry.get().strip()
             if test_connection(model_url):
+                self.current_model_url = model_url
+                self._save_settings()
                 messagebox.showinfo("Bağlantı Başarılı", "Ollama sunucusuna bağlantı başarılı!")
                 self.update_status_bar("Bağlantı başarılı")
             else:
@@ -1716,6 +1721,39 @@ class V3Calculator(ExecuteModeMixin):
             widgets.append(self.workspace_editor.text_editor)
 
         return widgets
+
+    def _load_settings(self) -> dict[str, str]:
+        """Load settings from JSON config file."""
+        import json
+        from machining_formulas.assets import asset_path
+        settings_file = asset_path("settings.json")
+        try:
+            if settings_file.exists():
+                with open(settings_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Error loading settings: {e}")
+        return {}
+
+    def _save_settings(self):
+        """Save settings to JSON config file."""
+        import json
+        from machining_formulas.assets import asset_path
+        settings_file = asset_path("settings.json")
+        try:
+            data = {
+                "ollama_url": self.current_model_url,
+                "model_name": self.current_model_name,
+            }
+            with open(settings_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"Error saving settings: {e}")
+
+    def _on_model_selection_change(self, event=None):
+        """Handle model combobox selection change."""
+        self.current_model_name = self.model_selection_combo.get().strip()
+        self._save_settings()
 
     def _apply_default_geometry(self):
         """Apply default window geometry exactly (1400x900) centered and brought to front."""

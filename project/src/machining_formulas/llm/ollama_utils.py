@@ -16,8 +16,8 @@ _DEFAULT_CHAT_URL = "http://localhost:11434/v1/chat"
 _DEFAULT_TAGS_URL = "http://localhost:11434/api/tags"
 """
 
-_DEFAULT_CHAT_URL = "http://192.168.1.14:11434/v1/chat"
-_DEFAULT_TAGS_URL = "http://192.168.1.14:11434/api/tags"
+_DEFAULT_CHAT_URL = "http://localhost:11434/v1/chat"
+_DEFAULT_TAGS_URL = "http://localhost:11434/api/tags"
 
 
 def normalize_chat_url(url: str | None) -> str:
