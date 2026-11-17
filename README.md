@@ -1,6 +1,6 @@
-# Machining Formulas (V3) — Turning/Milling + Material Mass + (Opsiyonel) Ollama
+# Machining Formulas (V3) — Turning/Milling/Drilling + Material Mass + (Opsiyonel) Ollama
 
-Bu depo; tornalama ve frezeleme için temel talaşlı imalat formüllerini, ayrıca şekle bağlı malzeme kütlesi hesabını sunar. Güncel uygulama Tkinter tabanlı **V3 GUI** ile gelir ve giriş noktası **`python -m machining_formulas`**’dır.
+Bu depo; tornalama, frezeleme ve delme için temel talaşlı imalat formüllerini, ayrıca şekle bağlı malzeme kütlesi hesabını sunar. Güncel uygulama Tkinter tabanlı **V3 GUI** ile gelir ve giriş noktası **`python -m machining_formulas`**’dır.
 
 ## 🚀 Hızlı Başlangıç
 
@@ -8,14 +8,21 @@ Bu depo; tornalama ve frezeleme için temel talaşlı imalat formüllerini, ayr�
 - Kurulum: `requirements.txt` + proje paketi kurulumu
 - Çalıştırma (V3 GUI): `python -m machining_formulas`
 
-### Ollama (opsiyonel)
+### LLM sunucusu (Ollama veya OpenAI-uyumlu)
 
-V3 arayüzünde Ollama URL ve model seçimi yapılabilir. Varsayılan istekler genellikle:
+V3 arayüzünde sunucu URL'si ve model seçimi yapılabilir. İki protokol birlikte desteklenir:
 
-- `.../api/tags` (model listesi)
-- `.../api/chat` (sohbet)
+- **OpenAI-uyumlu** (vLLM, LiteLLM, LM Studio, gateway vb.): `.../v1/models` (model listesi), `.../v1/chat/completions` (sohbet). Adres olarak `http://<host>:<port>/v1` yazmak yeterlidir.
+- **Ollama yerel**: `.../api/tags` (model listesi), `.../api/chat` (sohbet).
 
-> Not: Depoda `/v1/*` (OpenAI-uyumlu) uç noktaları için de yardımcı fonksiyonlar ve fallback mantığı bulunur.
+Yazılan uç nokta her zaman ilk denenir; başarısız olursa diğer protokollere otomatik geçilir.
+Model listesi yanıtı hem `data[].id` (OpenAI) hem `models[].name` (Ollama) biçiminde okunur.
+
+**API anahtarı (opsiyonel):** Sunucu anahtar istiyorsa arayüzdeki **API Key** alanına
+yazabilirsiniz; anahtar `Authorization: Bearer <key>` başlığıyla gönderilir. Alanı boş
+bırakırsanız sırayla `MACHINING_FORMULAS_API_KEY` ve `STRATA_API_KEY` ortam değişkenleri
+okunur. Anahtar repoya yazılmaz; yalnızca `~/.config/machining_formulas/settings.json`
+içinde (dosya izni `600`) veya ortam değişkeninde tutulur.
 
 ### 🧠 Tool-calling (Araç Çağrısı) örnekleri
 
@@ -67,16 +74,18 @@ Bu tool isimlerini sizin yazmanız gerekmez; amaç, **hangi tip soruların araç
 
 ### `src/` layout notu
 
-Bu repo `src/` layout kullanır. Bu yüzden `python -m machining_formulas` çalıştırmadan önce proje paketini kurmanız gerekir.
+Bu repo `src/` layout kullanır ve Python paketi kökte değil, **`project/`** dizini altındadır. Bu yüzden `python -m machining_formulas` çalıştırmadan önce proje paketini kurmanız gerekir.
 
-- Geliştirme (önerilen): `pip install -e .`
-- Alternatif: `pip install .`
-- Alternatif (kurulum yapmadan): `PYTHONPATH=src python -m machining_formulas`
+- Geliştirme (önerilen): `pip install -e project/`
+- Alternatif: `pip install project/`
+- Alternatif (kurulum yapmadan): `PYTHONPATH=project/src python -m machining_formulas`
 
 ### Test
 
-- Pytest: `pytest tests/`  
-   (Repo `src/` layout kullandığı için, bazı ortamlarda `PYTHONPATH=.` ile çalıştırmak daha sorunsuz olabilir.)
+- Tüm testler: `PYTHONPATH=project/src pytest project/tests project/tests_v3`
+- Yalnız çekirdek testler: `PYTHONPATH=project/src pytest project/tests`
+
+> Not: `tests_v3/` ayrı bir paket değildir; V3 çalışma alanı (workspace) testlerini içerir ve ayrıca çalıştırılmalıdır.
 
 When machining in lathes, turning centers, or multi-task machines, calculating the correct values for different machining parameters like cutting speed and spindle speed is a crucial factor for good results. In this section, you will find the formulas and definitions needed for general turning.
 
@@ -110,6 +119,10 @@ When machining in lathes, turning centers, or multi-task machines, calculating t
 |KAPR |Entering angle| degree||
 |PSIR |Lead angle |degree||  
 
+> Uygulama durumu: yukarıdaki sembollerden yalnız `Dm`, `fn`, `ap`, `vc`, `n`, `Pc`, `Q`, `Tc`, `lm` ve `kc`
+> için hesap yapılır. `hm` (ortalama talaş kalınlığı), `hex` (maksimum talaş kalınlığı), `KAPR` ve `PSIR`
+> bu depoda **tanım olarak** yer alır; hesap modülünde karşılıkları henüz yoktur.
+
 ## Milling Formulas and Definitions
 
 Here you will find a collection of good to have milling formulas and definitions that are used when it comes to the milling process, milling cutters, milling techniques, and more. Knowing how to calculate correct cutting speed, feed per tooth, or metal removal rate is crucial for good results in any milling operation.  
@@ -140,10 +153,10 @@ Here you will find a collection of good to have milling formulas and definitions
 1) Bağımlılıkları kurun:
 
 ```bash
-pip install -r requirements.txt
+pip install -r project/requirements.txt
 
-# Proje paketini kurun (src/ layout)
-pip install -e .
+# Proje paketini kurun (src/ layout, project/ altında)
+pip install -e project/
 ```
 
 2) V3 GUI’yi başlatın:
@@ -152,25 +165,24 @@ pip install -e .
 python -m machining_formulas
 ```
 
-### Legacy notu (V1/V2)
-
-Bu repo artık **V3** akışını esas alır. Kök dizindeki bazı eski başlatıcı betikler/dosyalar (örn. `run_v2.sh`, `requirements_v2.txt`) varsa bile dokümantasyon odağı V3’tür.
+Paketi kurmadan denemek için:
 
 ```bash
-pip install -r requirements_v2.txt
+PYTHONPATH=project/src python -m machining_formulas
 ```
 
-#### Temel Bağımlılıklar (Her İki Sistem İçin):
+#### Temel Bağımlılıklar:
 - `requests>=2.25.0` - Ollama API iletişimi
-- `markdown>=3.3.0` - Dokümantasyon ve tooltips
+- `pillow>=10.0.0` - Başlık görselleri (opsiyonel; yoksa GUI metin başlıkla açılır)
 - `pytest>=7.0.0` - Test framework
 - `tkinter` - GUI framework (genellikle Python ile birlikte gelir)
 
-#### Not: 
+#### Not:
 - Eğer tkinter kurulu değilse: `pip install tk` (Ubuntu/Debian için: `sudo apt-get install python3-tk`)
-- Geliştirme için ek bağımlılıklar `requirements_v2.txt` içinde yorum satırı olarak mevcuttur
+- Kullanıcı ayarları (sunucu URL'si, model adı, API anahtarı) `~/.config/machining_formulas/settings.json`
+  altında tutulur. `MACHINING_FORMULAS_CONFIG_DIR` ortam değişkeni ile bu konum değiştirilebilir.
 
-2. **Ollama'yı Çalıştırın:** Ollama sunucunuzun çalıştığından ve istediğiniz modelin kullanılabilir olduğundan emin olun. Uygulama varsayılan olarak yerel makinenizdeki `http://localhost:11434` uç noktasını kullanır. Bağlantı altyapısı hem `/v1/chat` (önerilen, tool-calling için) hem de `/api/chat` protokolleri için otomatik geçiş ve fallback desteğine sahiptir.
+2. **Sunucunuzu Çalıştırın:** Ollama (`http://localhost:11434`) veya OpenAI-uyumlu bir gateway (`http://<host>:<port>/v1`) kullanabilirsiniz. Bağlantı altyapısı, yazdığınız uç noktayı ilk sırada denedikten sonra diğer protokollere otomatik geçer.
 3. **Uygulamayı Çalıştırın:**
 
    ```bash
@@ -276,14 +288,31 @@ Bu kılavuz, size verilen araçları daha verimli kullanmanıza yardımcı olaca
      - `Pc`: Net Güç (kW)
      - `n`: İş Mili Devri (rpm)
 
+#### Delme Hesaplamaları
+
+1. **Kesme Hızı (Cutting Speed)**
+   - **Parametreler:** `Dc` (Matkap Çapı, mm), `n` (İş Mili Devri, rpm)
+2. **İş Mili Hızı (Spindle Speed)**
+   - **Parametreler:** `Vc` (Kesme Hızı, m/min), `Dc` (Matkap Çapı, mm)
+3. **İlerleme Oranı (Feed Rate)**
+   - **Parametreler:** `fn` (Devir Başına İlerleme, mm/rev), `n` (İş Mili Devri, rpm)
+4. **Metal Kaldırma Oranı (Metal Removal Rate)**
+   - **Parametreler:** `Dc` (Matkap Çapı, mm), `Vf` (İlerleme, mm/min)
+5. **İşlem Süresi (Machining Time)**
+   - **Parametreler:** `lm` (İşlenecek Uzunluk, mm), `Vf` (İlerleme, mm/min)
+
 #### Malzeme Kütlesi Hesaplaması
 
 - **Malzeme Kütlesi**
   - **Açıklama:** Belirli bir şekil ve yoğunluk için malzeme kütlesini hesaplar.
   - **Parametreler:**
-    - `shape_key`: Malzemenin şekli (örn: triangle, circle, semi-circle, square, rectangle, parallelogram, rhombus, trapezium, kite, pentagon, hexagon, octagon, nonagon, decagon)
+    - `shape_key`: Malzemenin şekli (`triangle`, `circle`, `semi-circle`, `square`, `rectangle`, `parallelogram`, `rhombus`, `trapezoid`, `trapezium`, `kite`, `pentagon`, `hexagon`, `octagon`, `nonagon`, `decagon`, `tube`, `sphere`)
     - `density`: Malzeme yoğunluğu (g/cm³)
-    - `length`: Ekstrüzyon uzunluğu (mm)
+    - `length`: Ekstrüzyon uzunluğu (mm) — **`sphere` için kullanılmaz**
+  - **Şekil parametreleri:** `radius`, `width`, `height`, `diagonal1`, `diagonal2`, `width1`, `width2` ve `tube` için `outer_radius`/`inner_radius`.
+    > Not: `pentagon`…`decagon` (düzgün çokgenler) için `width` alanı **kenar uzunluğu** olarak hesaplanır;
+    > arayüzde bu alan "Genişlik" etiketiyle görünür.
+  - **Birim:** Sonuç gram (g) olarak döner; hacim içte mm³, yoğunluk g/cm³ ile çarpılır.
 
 ## Örnek Promptlar
 

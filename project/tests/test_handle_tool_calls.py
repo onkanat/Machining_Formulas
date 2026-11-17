@@ -12,15 +12,10 @@ class DummyResponse:
 def _build_calculator_stub():
     calc = AdvancedCalculator.__new__(AdvancedCalculator)
     calc.history = []
-    calc.add_to_workspace = lambda *args, **kwargs: None
-    calc.update_status_bar = lambda *args, **kwargs: None
     calc._candidate_chat_urls = lambda url: [url]
-    calc._debug_log_raw_response = lambda *args, **kwargs: None
-    calc.debug_show_raw_model_responses = False
     calc.force_legacy_chat = False
     calc.current_chat_url = None
     calc._last_tool_run_details = None
-    calc._tool_loop_limit = 4
     return calc
 
 
@@ -350,3 +345,66 @@ def test_handle_tool_calls_drilling_success():
     assert "31.42" in calculator.history[0]["content"]
 
 
+def test_execute_tool_material_mass_sphere_ignores_length():
+    """Küre kütlesi LLM yolunda da çalışmalı; 'length' gönderilse bile yok sayılmalı."""
+    calculator = AdvancedCalculator()
+
+    result = calculator._execute_tool(
+        "calculate_material_mass",
+        {"shape_key": "sphere", "density": 7.85, "radius": 50, "length": 100},
+        [],
+    )
+
+    assert result.unit == "g"
+    assert abs(result.value - 4110.250388) < 0.01
+
+
+
+
+def test_chat_with_tools_sends_bearer_token():
+    """A key-protected gateway receives the API key as a bearer token."""
+    calculator = _build_calculator_stub()
+    captured = {}
+
+    def fake_post_chat(url_candidates, payload, headers, timeout=60):
+        captured["headers"] = headers
+        return (
+            DummyResponse({"message": {"role": "assistant", "content": "ok"}}),
+            url_candidates[0],
+            False,
+        )
+
+    calculator._post_chat_with_legacy_support = fake_post_chat  # type: ignore[assignment]
+
+    calculator.chat_with_tools(
+        "http://192.168.1.105:8080/v1",
+        "qwen3.8-flash-next-q2_0",
+        [{"role": "user", "content": "merhaba"}],
+        [],
+        api_key="secret-key",
+    )
+
+    assert captured["headers"]["Authorization"] == "Bearer secret-key"
+
+
+def test_chat_with_tools_omits_auth_without_key(monkeypatch):
+    """Without a configured key no Authorization header is sent."""
+    monkeypatch.delenv("MACHINING_FORMULAS_API_KEY", raising=False)
+    monkeypatch.delenv("STRATA_API_KEY", raising=False)
+
+    calculator = _build_calculator_stub()
+    captured = {}
+
+    def fake_post_chat(url_candidates, payload, headers, timeout=60):
+        captured["headers"] = headers
+        return (
+            DummyResponse({"message": {"role": "assistant", "content": "ok"}}),
+            url_candidates[0],
+            False,
+        )
+
+    calculator._post_chat_with_legacy_support = fake_post_chat  # type: ignore[assignment]
+
+    calculator.chat_with_tools("http://localhost:11434", "llama3", [], [])
+
+    assert "Authorization" not in captured["headers"]

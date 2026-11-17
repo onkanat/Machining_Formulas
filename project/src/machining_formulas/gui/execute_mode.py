@@ -2,10 +2,75 @@
 
 from __future__ import annotations
 
+import ast
 import math
+import operator
 import tkinter as tk
 from tkinter import messagebox
 from typing import Any
+
+
+_BIN_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+}
+
+
+def _evaluate_safe_expression(code: str, calculator: Any) -> Any:
+    """Evaluate a numeric expression restricted to ``calc.<method>(...)`` calls."""
+    try:
+        parsed = ast.parse(code.strip(), mode="eval")
+    except SyntaxError as exc:
+        raise ValueError(f"Geçersiz ifade: {exc.msg}") from exc
+    return _eval_node(parsed.body, calculator)
+
+
+def _eval_node(node: ast.AST, calculator: Any) -> Any:
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool) or not isinstance(
+            node.value, (int, float, str)
+        ):
+            raise ValueError("Yalnızca sayı ve metin sabitlerine izin verilir.")
+        return node.value
+
+    if isinstance(node, ast.Name):
+        if node.id == "pi":
+            return math.pi
+        raise ValueError(f"İzin verilmeyen ad: {node.id}")
+
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        operand = _eval_node(node.operand, calculator)
+        return +operand if isinstance(node.op, ast.UAdd) else -operand
+
+    if isinstance(node, ast.BinOp) and type(node.op) in _BIN_OPS:
+        left = _eval_node(node.left, calculator)
+        right = _eval_node(node.right, calculator)
+        return _BIN_OPS[type(node.op)](left, right)
+
+    if isinstance(node, ast.Call):
+        if not isinstance(node.func, ast.Attribute):
+            raise ValueError("Yalnızca 'calc.<hesap>(...)' biçimi çalıştırılabilir.")
+        if not isinstance(node.func.value, ast.Name) or node.func.value.id not in {
+            "calc",
+            "ec",
+        }:
+            raise ValueError("Yalnızca 'calc' veya 'ec' nesnesi üzerinden çağrı yapılabilir.")
+        if node.keywords or any(isinstance(arg, ast.Starred) for arg in node.args):
+            raise ValueError("Anahtar kelime ve yıldızlı argümanlar desteklenmez.")
+        method_name = node.func.attr
+        if method_name.startswith("_"):
+            raise ValueError("Özel metotlar çalıştırılamaz.")
+        method = getattr(calculator, method_name, None)
+        if not callable(method):
+            raise ValueError(f"Bilinmeyen hesap metodu: {method_name}")
+        return method(*(_eval_node(arg, calculator) for arg in node.args))
+
+    raise ValueError(f"İzin verilmeyen ifade türü: {type(node).__name__}")
 
 
 class ExecuteModeMixin:
@@ -27,10 +92,10 @@ class ExecuteModeMixin:
             tk.END,
             "\n\n--- HESAPLAMA ÇALIŞTIRMA (EXECUTE) MODU AKTİF ---\n"
             "Kısa Rehber:\n"
-            "1. Çalıştırmak istediğiniz Python ifadesini (örn: 'calc.calculate_turning(\"Cutting speed\", 100, 500)') seçin.\n"
-            "2. Seçilen kodu Ctrl+C tuşlarına basarak çalıştırın.\n"
+            "1. Çalıştırmak istediğiniz ifadeyi (örn: 'calc.calculate_turning(\"Cutting speed\", 100, 500)') seçin.\n"
+            "2. Seçilen kodu execute komutuyla çalıştırın.\n"
             "3. Güvenlik Sınırı: Kod seçimi maksimum 2 kB (2048 karakter) ile sınırlıdır.\n"
-            "4. Güvenli Kapsam: eval() fonksiyonu güvenli bir yerel kapsam içinde çalışır.\n"
+            "4. Güvenli Kapsam: Yalnızca 'calc.<hesap>(...)' çağrıları ve aritmetik ifadeler desteklenir.\n"
             "--------------------------------------------------\n",
         )
 
@@ -52,12 +117,7 @@ class ExecuteModeMixin:
                 return
 
             calculator = self._get_exec_mode_calculator()
-            local_scope = {"calc": calculator, "ec": calculator, "pi": math.pi}
-            result = eval(  # noqa: S307
-                selected_code,
-                {"__builtins__": {}},
-                local_scope,
-            )
+            result = _evaluate_safe_expression(selected_code, calculator)
             self.result_text.insert(
                 "insert",
                 f"\n>>> {selected_code}\nSonuç: {result}\n",

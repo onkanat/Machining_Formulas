@@ -47,3 +47,18 @@ def test_execute_mode_over_limit(monkeypatch):
     # showwarning SHOULD be called
     mock_showwarning.assert_called_once()
     assert calc.execute_mode is False
+
+
+def test_execute_mode_blocks_dunder_escape(monkeypatch):
+    """Özel (dunder) attribute erişimi sandbox kaçışına izin vermemeli."""
+    calc = DummyCalculator()
+    calc.execute_mode = True
+    calc.result_text.get.return_value = "(1).__class__.__base__.__subclasses__()"
+
+    mock_showerror = MagicMock()
+    monkeypatch.setattr("tkinter.messagebox.showerror", mock_showerror)
+
+    calc.execute_calculation()
+
+    mock_showerror.assert_called_once()
+    assert calc.execute_mode is False

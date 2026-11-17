@@ -7,12 +7,54 @@ where users and models can collaboratively edit content.
 from __future__ import annotations
 
 import tkinter as tk
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from tkinter import ttk, scrolledtext, messagebox
 
-from .workspace_buffer import WorkspaceBuffer
+from .workspace_buffer import EditType, WorkspaceBuffer, WorkspaceEdit, line_diff
+
+MODE_APPEND = "append"
+MODE_INSERT = "insert"
+MODE_REPLACE = "replace"
+
+_INSERT_MODE_LABELS = {
+    "Sona ekle": MODE_APPEND,
+    "İmlece ekle": MODE_INSERT,
+}
+
+_DIFF_TAGS = {
+    " ": "diff_ctx",
+    "-": "diff_del",
+    "+": "diff_add",
+    "@": "diff_hunk",
+}
+
+
+@dataclass(frozen=True)
+class ModelRequest:
+    """A structured request from the workspace editor to the model layer."""
+
+    question: str = ""
+    source_text: str = ""
+    mode: str = MODE_APPEND
+    offset: int = 0
+
+
+def format_answer_block(question: str, answer: str, *, max_question_chars: int = 500) -> str:
+    """Format a model answer for insertion into the workspace.
+
+    Belgenin tümü asla "Soru" başlığına yazılmaz; yalnızca soru çubuğuna yazılan
+    kısa soru korunur. Böylece her turda belge kendi kopyasını taşımaz.
+    """
+    answer = (answer or "").strip()
+    question = (question or "").strip()
+    if not answer:
+        return ""
+    if question and len(question) <= max_question_chars:
+        return f"Soru: {question}\n\nYanıt:\n{answer}"
+    return answer
 
 
 class WorkspaceEditor(ttk.Frame):
@@ -22,14 +64,14 @@ class WorkspaceEditor(ttk.Frame):
         self,
         parent: ttk.Widget,
         workspace_buffer: WorkspaceBuffer,
-        on_model_suggestion: Optional[Callable[[str], None]] = None,
+        on_model_request: Optional[Callable[[ModelRequest], None]] = None,
         on_content_change: Optional[Callable[[str], None]] = None,
         tooltips: Optional[Dict[str, str]] = None,
     ):
         super().__init__(parent, style="Calc.TFrame")
 
         self.workspace_buffer = workspace_buffer
-        self.on_model_suggestion = on_model_suggestion
+        self.on_model_request = on_model_request
         self.on_content_change = on_content_change
         self.tooltips = tooltips or {}
 
@@ -37,25 +79,26 @@ class WorkspaceEditor(ttk.Frame):
         self._user_editing = False
         self._last_known_content = ""
 
+        self._review_pane_visible = False
+        self._selector_suggestions: List[WorkspaceEdit] = []
+        self._hint_serial = 0
+
         self._setup_ui()
         self._load_content()
 
         # Start tracking after initial content is loaded
         self._user_editing = True
 
+    # ------------------------------------------------------------------ UI
+
     def _setup_ui(self):
         """Setup the workspace editor UI."""
-        # Header with toolbar
         self._setup_toolbar()
-
-        # Main editor area
-        self._setup_editor()
-
-        # Status bar
+        # Alttan yukarı: durum çubuğu en altta, soru çubuğu onun üstünde.
         self._setup_status_bar()
-
-        # Suggestions panel (initially hidden)
-        self._setup_suggestions_panel()
+        self._setup_question_bar()
+        self._setup_paned_area()
+        self._setup_review_panel()
 
     def _setup_toolbar(self):
         """Setup editor toolbar."""
@@ -63,49 +106,52 @@ class WorkspaceEditor(ttk.Frame):
         toolbar_frame.pack(fill="x", padx=5, pady=5)
 
         title_label = ttk.Label(
-            toolbar_frame, text="📝 ÇALIŞMA ALANI EDITÖRÜ", font=("Arial", 12, "bold")
+            toolbar_frame, text="📝 ÇALIŞMA ALANI", font=("Arial", 12, "bold")
         )
         title_label.pack(side="left")
 
         ttk.Separator(toolbar_frame, orient="vertical").pack(side="left", padx=10, fill="y")
 
-        undo_btn = ttk.Button(toolbar_frame, text="↶ Geri", command=self._undo)
-        undo_btn.pack(side="left", padx=2)
-
-        redo_btn = ttk.Button(toolbar_frame, text="↷ İleri", command=self._redo)
-        redo_btn.pack(side="left", padx=2)
+        ttk.Button(toolbar_frame, text="↶ Geri", command=self._undo).pack(side="left", padx=2)
+        ttk.Button(toolbar_frame, text="↷ İleri", command=self._redo).pack(side="left", padx=2)
 
         ttk.Separator(toolbar_frame, orient="vertical").pack(side="left", padx=5, fill="y")
 
-        model_btn = ttk.Button(
+        ttk.Button(
             toolbar_frame,
-            text="🤖 Model Düzenleme Öner",
-            command=self._request_model_suggestion,
-        )
-        model_btn.pack(side="left", padx=2)
+            text="🤖 Sor / Düzenle",
+            command=self._send_question,
+        ).pack(side="left", padx=2)
 
-        suggestions_btn = ttk.Button(
+        ttk.Button(
             toolbar_frame,
-            text="💡 Önerileri Göster",
-            command=self._toggle_suggestions,
-        )
-        suggestions_btn.pack(side="left", padx=2)
+            text="🔍 İnceleme",
+            command=self._toggle_review_panel,
+        ).pack(side="left", padx=2)
 
         ttk.Separator(toolbar_frame, orient="vertical").pack(side="left", padx=5, fill="y")
 
-        history_btn = ttk.Button(toolbar_frame, text="📜 Geçmiş", command=self._show_version_history)
-        history_btn.pack(side="left", padx=2)
+        ttk.Button(
+            toolbar_frame, text="📜 Geçmiş", command=self._show_version_history
+        ).pack(side="left", padx=2)
 
-        clear_btn = ttk.Button(toolbar_frame, text="🗑️ Temizle", command=self._clear_workspace)
-        clear_btn.pack(side="right", padx=2)
+        ttk.Button(
+            toolbar_frame, text="🗑️ Temizle", command=self._clear_workspace
+        ).pack(side="right", padx=2)
 
-    def _setup_editor(self):
-        """Setup the main text editor."""
-        editor_frame = ttk.Frame(self, style="Calc.TFrame")
-        editor_frame.pack(fill="both", expand=True, padx=5, pady=5)
+    def _setup_paned_area(self):
+        """Create the vertical pane holding the editor and the review panel."""
+        self.workspace_paned = ttk.PanedWindow(self, orient="vertical")
+        self.workspace_paned.pack(fill="both", expand=True, padx=5, pady=5)
 
+        editor_pane = ttk.Frame(self.workspace_paned, style="Calc.TFrame")
+        self._setup_editor(editor_pane)
+        self.workspace_paned.add(editor_pane, weight=4)
+
+    def _setup_editor(self, parent: ttk.Frame):
+        """Setup the main text editor inside its pane."""
         self.line_numbers = tk.Text(
-            editor_frame,
+            parent,
             width=4,
             padx=3,
             takefocus=0,
@@ -119,7 +165,7 @@ class WorkspaceEditor(ttk.Frame):
         self.line_numbers.pack(side="left", fill="y")
 
         self.text_editor = scrolledtext.ScrolledText(
-            editor_frame,
+            parent,
             wrap=tk.WORD,
             font=("Consolas", 11),
             undo=True,
@@ -132,6 +178,8 @@ class WorkspaceEditor(ttk.Frame):
         self.text_editor.bind("<KeyRelease>", self._on_key_release)
         self.text_editor.bind("<Button-1>", self._on_mouse_click)
         self.text_editor.bind("<<Modified>>", self._on_text_modified)
+        self.text_editor.bind("<Control-Return>", lambda event: self._send_question())
+        self.text_editor.bind("<Command-Return>", lambda event: self._send_question())
 
         self.text_editor.tag_configure("user_insert", background="#e8f5e8")
         self.text_editor.tag_configure("user_delete", background="#ffe8e8")
@@ -141,54 +189,124 @@ class WorkspaceEditor(ttk.Frame):
     def _setup_status_bar(self):
         """Setup status bar."""
         self.status_frame = ttk.Frame(self, style="Calc.TFrame")
-        self.status_frame.pack(fill="x", padx=5, pady=2)
+        self.status_frame.pack(side="bottom", fill="x", padx=5, pady=2)
 
         self.status_label = ttk.Label(self.status_frame, text="Hazır", font=("Arial", 9))
         self.status_label.pack(side="left")
 
+        self.hint_label = ttk.Label(self.status_frame, text="", font=("Arial", 9))
+        self.hint_label.pack(side="left", padx=(12, 0))
+
         self.edit_counter = ttk.Label(self.status_frame, text="", font=("Arial", 9))
         self.edit_counter.pack(side="right")
 
-        self._update_status()
+    def _setup_question_bar(self):
+        """Setup the question / command bar under the editor."""
+        bar = ttk.Frame(self, style="Calc.TFrame")
+        bar.pack(side="bottom", fill="x", padx=5, pady=(2, 4))
 
-    def _setup_suggestions_panel(self):
-        """Setup model suggestions panel."""
-        self.suggestions_frame = ttk.Frame(self, style="Calc.TFrame")
+        ttk.Label(bar, text="Soru:", font=("Arial", 9)).pack(side="left")
 
-        header_frame = ttk.Frame(self.suggestions_frame, style="Calc.TFrame")
-        header_frame.pack(fill="x", padx=5, pady=5)
+        self.question_entry = ttk.Entry(bar)
+        self.question_entry.pack(side="left", fill="x", expand=True, padx=(5, 8))
+        self.question_entry.bind("<Return>", lambda event: self._send_question())
+
+        ttk.Label(bar, text="Ekleme:", font=("Arial", 9)).pack(side="left")
+
+        self.insert_mode = ttk.Combobox(
+            bar,
+            state="readonly",
+            width=12,
+            values=tuple(_INSERT_MODE_LABELS.keys()),
+        )
+        self.insert_mode.current(0)
+        self.insert_mode.pack(side="left", padx=(5, 8))
+
+        self.send_button = ttk.Button(bar, text="Gönder", command=self._send_question)
+        self.send_button.pack(side="left")
+
+    def _setup_review_panel(self):
+        """Setup the diff review panel (added to the pane only when needed)."""
+        self.review_frame = ttk.Frame(self.workspace_paned, style="Calc.TFrame")
+
+        header = ttk.Frame(self.review_frame, style="Calc.TFrame")
+        header.pack(fill="x", padx=5, pady=(5, 2))
 
         ttk.Label(
-            header_frame,
-            text="🤖 Model Önerileri",
-            font=("Arial", 10, "bold"),
+            header, text="🔍 DEĞİŞİKLİK İNCELEME", font=("Arial", 10, "bold")
         ).pack(side="left")
 
-        close_btn = ttk.Button(header_frame, text="✕", command=self._hide_suggestions, width=3)
-        close_btn.pack(side="right")
+        self.review_summary = ttk.Label(header, text="", font=("Arial", 9))
+        self.review_summary.pack(side="left", padx=8)
 
-        self.suggestions_listbox = tk.Listbox(
-            self.suggestions_frame,
-            height=6,
-            font=("Consolas", 9),
-            selectmode=tk.SINGLE,
+        ttk.Button(header, text="✕", width=3, command=self._hide_review_panel).pack(side="right")
+        self.reject_button = ttk.Button(
+            header, text="❌ Reddet", command=self._reject_current_suggestion
         )
-        self.suggestions_listbox.pack(fill="both", expand=True, padx=5, pady=5)
+        self.reject_button.pack(side="right", padx=2)
+        self.accept_button = ttk.Button(
+            header, text="✅ Kabul Et", command=self._accept_current_suggestion
+        )
+        self.accept_button.pack(side="right", padx=2)
+        ttk.Button(header, text="🔄", width=3, command=self._refresh_suggestion_selector).pack(
+            side="right", padx=2
+        )
 
-        button_frame = ttk.Frame(self.suggestions_frame, style="Calc.TFrame")
-        button_frame.pack(fill="x", padx=5, pady=5)
+        selector_row = ttk.Frame(self.review_frame, style="Calc.TFrame")
+        selector_row.pack(fill="x", padx=5, pady=2)
 
-        ttk.Button(button_frame, text="✅ Kabul Et", command=self._accept_suggestion).pack(side="left", padx=2)
-        ttk.Button(button_frame, text="❌ Reddet", command=self._reject_suggestion).pack(side="left", padx=2)
-        ttk.Button(button_frame, text="👁️ Önizle", command=self._preview_suggestion).pack(side="left", padx=2)
+        ttk.Label(selector_row, text="Öneri:", font=("Arial", 9)).pack(side="left")
+        self.suggestion_selector = ttk.Combobox(selector_row, state="readonly", values=[])
+        self.suggestion_selector.pack(side="left", fill="x", expand=True, padx=(5, 0))
+        self.suggestion_selector.bind(
+            "<<ComboboxSelected>>", lambda event: self._refresh_review()
+        )
+
+        diff_container = ttk.Frame(self.review_frame, style="Calc.TFrame")
+        diff_container.pack(fill="both", expand=True, padx=5, pady=(2, 5))
+
+        diff_scroll = ttk.Scrollbar(diff_container, orient="vertical")
+        self.diff_text = tk.Text(
+            diff_container,
+            wrap="word",
+            font=("Consolas", 9),
+            height=8,
+            state="disabled",
+            background="#fbfbfb",
+            padx=6,
+            pady=4,
+        )
+        self.diff_text.configure(yscrollcommand=diff_scroll.set)
+        diff_scroll.configure(command=self.diff_text.yview)
+
+        self.diff_text.pack(side="left", fill="both", expand=True)
+        diff_scroll.pack(side="right", fill="y")
+
+        self.diff_text.tag_configure("diff_add", background="#d4f5d4", foreground="#14532d")
+        self.diff_text.tag_configure("diff_del", background="#fbd5d5", foreground="#7f1d1d")
+        self.diff_text.tag_configure("diff_ctx", foreground="#4b5563")
+        self.diff_text.tag_configure("diff_hunk", foreground="#1d4ed8", font=("Consolas", 9, "bold"))
+        self.diff_text.tag_configure("diff_note", foreground="#92400e", font=("Arial", 9, "italic"))
+
+        self._set_review_buttons_state("disabled")
+
+    # -------------------------------------------------------------- content
 
     def _load_content(self):
         """Load content from workspace buffer."""
-        content = self.workspace_buffer.get_content()
-        self.text_editor.delete("1.0", tk.END)
-        self.text_editor.insert("1.0", content)
-        self._last_known_content = content
+        previous_editing = self._user_editing
+        self._user_editing = False
+        try:
+            content = self.workspace_buffer.get_content()
+            self.text_editor.delete("1.0", tk.END)
+            self.text_editor.insert("1.0", content)
+            self.text_editor.edit_modified(False)
+            self._last_known_content = self.text_editor.get("1.0", tk.END).rstrip("\n")
+        finally:
+            self._user_editing = previous_editing
+
         self._update_line_numbers()
+        self._update_status()
 
     def _on_key_release(self, event=None):
         """Handle key release events."""
@@ -301,126 +419,233 @@ class WorkspaceEditor(ttk.Frame):
         except Exception:
             pass
 
-    def _request_model_suggestion(self):
-        """Request model suggestion for current selection or content."""
-        if not self.on_model_suggestion:
-            return
+    def _set_hint(self, text: str, duration_ms: int = 6000):
+        """Show a short-lived message in the status bar."""
+        self.hint_label.config(text=text)
+        self._hint_serial += 1
+        serial = self._hint_serial
+        if duration_ms > 0:
+            self.after(
+                duration_ms,
+                lambda: self.hint_label.config(text="") if self._hint_serial == serial else None,
+            )
 
+    # ------------------------------------------------------------- requests
+
+    def _cursor_offset(self) -> int:
+        return len(self.text_editor.get("1.0", tk.INSERT))
+
+    def _selected_source(self) -> tuple[str, int]:
+        """Return the selected text and its character offset, else ("", cursor)."""
         try:
             selection = self.text_editor.get(tk.SEL_FIRST, tk.SEL_LAST)
-            context = f"Seçili metin: {selection}"
         except tk.TclError:
-            context = self.text_editor.get("1.0", tk.END)
-            context = f"Tüm içerik: {context}"
+            selection = ""
 
-        self.on_model_suggestion(context)
+        if selection:
+            return selection, len(self.text_editor.get("1.0", tk.SEL_FIRST))
+        return "", self._cursor_offset()
 
-    def _toggle_suggestions(self):
-        """Toggle suggestions panel visibility."""
-        if self.suggestions_frame.winfo_ismapped():
-            self._hide_suggestions()
-        else:
-            self._show_suggestions()
+    def _build_request(self) -> Optional[ModelRequest]:
+        question = self.question_entry.get().strip()
+        selection, offset = self._selected_source()
 
-    def _show_suggestions(self):
-        """Show suggestions panel."""
-        self._refresh_suggestions()
-        self.suggestions_frame.pack(fill="x", padx=5, pady=5)
-
-    def _hide_suggestions(self):
-        """Hide suggestions panel."""
-        self.suggestions_frame.pack_forget()
-
-    def _refresh_suggestions(self):
-        """Refresh suggestions list."""
-        self.suggestions_listbox.delete(0, tk.END)
-
-        suggestions = self.workspace_buffer.get_pending_suggestions()
-        for i, suggestion in enumerate(suggestions):
-            preview = (
-                suggestion.new_text[:50] + "..."
-                if len(suggestion.new_text) > 50
-                else suggestion.new_text
+        if question:
+            mode = _INSERT_MODE_LABELS.get(self.insert_mode.get(), MODE_APPEND)
+            # Seçim varsa yalnızca bağlam olarak gönderilir; yanıt seçilen yere eklenir.
+            return ModelRequest(
+                question=question,
+                source_text=selection,
+                mode=mode,
+                offset=offset,
             )
-            self.suggestions_listbox.insert(tk.END, f"{i + 1}. {preview}")
 
-    def _accept_suggestion(self):
-        """Accept selected suggestion."""
-        selection = self.suggestions_listbox.curselection()
-        if not selection:
-            messagebox.showwarning("Uyarı", "Lütfen bir öneri seçin.")
+        if selection:
+            return ModelRequest(source_text=selection, mode=MODE_REPLACE, offset=offset)
+
+        content = self.get_current_content()
+        if not content.strip():
+            self._set_hint("Önce metin yazın veya yukarıdaki soru alanına bir soru girin.")
+            return None
+        return ModelRequest(source_text=content, mode=MODE_REPLACE, offset=0)
+
+    def _send_question(self):
+        """Send the question bar content (or the current selection) to the model."""
+        if not self.on_model_request:
+            self._set_hint("Model bağlı değil.")
             return
 
-        suggestions = self.workspace_buffer.get_pending_suggestions()
-        index = selection[0]
-
-        if index < len(suggestions):
-            suggestion = suggestions[index]
-            if self.workspace_buffer.accept_suggestion(suggestion.id):
-                self._load_content()
-                self._refresh_suggestions()
-                self._update_status()
-                messagebox.showinfo("Başarılı", "Öneri kabul edildi.")
-            else:
-                messagebox.showerror("Hata", "Öneri kabul edilemedi.")
-
-    def _reject_suggestion(self):
-        """Reject selected suggestion."""
-        selection = self.suggestions_listbox.curselection()
-        if not selection:
-            messagebox.showwarning("Uyarı", "Lütfen bir öneri seçin.")
+        request = self._build_request()
+        if request is None:
             return
 
-        suggestions = self.workspace_buffer.get_pending_suggestions()
-        index = selection[0]
+        self.send_button.state(["disabled"])
+        self._set_hint("Model yanıtı hazırlanıyor...", duration_ms=0)
+        self.on_model_request(request)
 
-        if index < len(suggestions):
-            suggestion = suggestions[index]
-            if self.workspace_buffer.reject_suggestion(suggestion.id):
-                self._refresh_suggestions()
-                self._update_status()
-                messagebox.showinfo("Başarılı", "Öneri reddedildi.")
-            else:
-                messagebox.showerror("Hata", "Öneri reddedilemedi.")
+    def finish_request(self, message: str = ""):
+        """Re-enable the question bar after a model request completes."""
+        try:
+            self.send_button.state(["!disabled"])
+        except Exception:
+            pass
+        if message:
+            self._set_hint(message)
 
-    def _preview_suggestion(self):
-        """Preview selected suggestion."""
-        selection = self.suggestions_listbox.curselection()
-        if not selection:
-            messagebox.showwarning("Uyarı", "Lütfen bir öneri seçin.")
+    # --------------------------------------------------------------- review
+
+    def _pending_suggestions(self) -> List[WorkspaceEdit]:
+        return self.workspace_buffer.get_pending_suggestions()
+
+    def _line_for_offset(self, offset: int) -> int:
+        content = self.workspace_buffer.get_content()
+        bounded = max(0, min(offset, len(content)))
+        return content.count("\n", 0, bounded) + 1
+
+    def _description_for(self, edit: WorkspaceEdit) -> str:
+        kind = "Ekleme" if edit.edit_type == EditType.MODEL_INSERT else "Değiştirme"
+        line = self._line_for_offset(edit.position)
+        delta = len(edit.new_text) - len(edit.old_text)
+        sign = "+" if delta >= 0 else ""
+        return f"Satır {line} · {kind} ({sign}{delta} karakter)"
+
+    def open_review(self, edit_id: Optional[str] = None):
+        """Show the review panel, selecting ``edit_id`` (else the newest pending)."""
+        self._show_review_panel()
+        self._refresh_suggestion_selector(edit_id)
+
+    def _toggle_review_panel(self):
+        if self._review_pane_visible:
+            self._hide_review_panel()
+        else:
+            self.open_review()
+
+    def _show_review_panel(self):
+        if self._review_pane_visible:
+            return
+        self.workspace_paned.add(self.review_frame, weight=2)
+        self._review_pane_visible = True
+
+    def _hide_review_panel(self):
+        if not self._review_pane_visible:
+            return
+        self.workspace_paned.forget(self.review_frame)
+        self._review_pane_visible = False
+
+    def _refresh_suggestion_selector(self, select_id: Optional[str] = None):
+        """Rebuild the suggestion list and render the selected diff."""
+        suggestions = self._pending_suggestions()
+        self._selector_suggestions = suggestions
+
+        labels = [
+            f"{index + 1}/{len(suggestions)} · {self._description_for(edit)}"
+            for index, edit in enumerate(suggestions)
+        ]
+        self.suggestion_selector.configure(values=labels)
+
+        if not labels:
+            self.suggestion_selector.set("")
+            self._refresh_review()
             return
 
-        suggestions = self.workspace_buffer.get_pending_suggestions()
-        index = selection[0]
+        target_index = len(suggestions) - 1
+        if select_id:
+            for index, edit in enumerate(suggestions):
+                if edit.id == select_id:
+                    target_index = index
+                    break
+        self.suggestion_selector.current(target_index)
+        self._refresh_review()
 
-        if index >= len(suggestions):
+    def _current_review_edit(self) -> Optional[WorkspaceEdit]:
+        index = self.suggestion_selector.current()
+        if 0 <= index < len(self._selector_suggestions):
+            return self._selector_suggestions[index]
+        return None
+
+    def _refresh_review(self):
+        """Render the diff of the selected suggestion."""
+        edit = self._current_review_edit()
+
+        self.diff_text.configure(state="normal")
+        self.diff_text.delete("1.0", tk.END)
+
+        if edit is None:
+            self.review_summary.config(text="")
+            self._set_review_buttons_state("disabled")
+            self._insert_diff_line("Bekleyen öneri yok.", "diff_note")
+            self.diff_text.configure(state="disabled")
             return
 
-        suggestion = suggestions[index]
-
-        preview_window = tk.Toplevel(self)
-        preview_window.title("Öneri Önizlemesi")
-        preview_window.geometry("600x400")
-
-        ttk.Label(preview_window, text="Mevcut Metin:", font=("Arial", 10, "bold")).pack(
-            anchor="w", padx=10, pady=(10, 5)
+        self._set_review_buttons_state("normal")
+        kind = "Ekleme" if edit.edit_type == EditType.MODEL_INSERT else "Değiştirme"
+        self.review_summary.config(
+            text=f"{kind} · −{len(edit.old_text.splitlines())} / +{len(edit.new_text.splitlines())} satır"
         )
-        original_text = tk.Text(preview_window, height=8, wrap=tk.WORD, font=("Consolas", 10))
-        original_text.pack(fill="x", padx=10, pady=5)
-        original_text.insert("1.0", suggestion.old_text)
-        original_text.config(state="disabled")
 
-        ttk.Label(preview_window, text="Önerilen Metin:", font=("Arial", 10, "bold")).pack(
-            anchor="w", padx=10, pady=(10, 5)
-        )
-        suggested_text = tk.Text(preview_window, height=8, wrap=tk.WORD, font=("Consolas", 10))
-        suggested_text.pack(fill="both", expand=True, padx=10, pady=5)
-        suggested_text.insert("1.0", suggestion.new_text)
+        diff_lines = line_diff(edit.old_text, edit.new_text)
+        if not diff_lines:
+            self._insert_diff_line("Öneri mevcut metinle aynı; uygulanacak değişiklik yok.", "diff_note")
+        for tag, text in diff_lines:
+            if tag == "@":
+                self._insert_diff_line(text, _DIFF_TAGS[tag])
+            else:
+                self._insert_diff_line(f"{tag} {text}", _DIFF_TAGS[tag])
 
-        button_frame = ttk.Frame(preview_window)
-        button_frame.pack(fill="x", padx=10, pady=10)
+        self.diff_text.see("1.0")
+        self.diff_text.configure(state="disabled")
 
-        ttk.Button(button_frame, text="Kapat", command=preview_window.destroy).pack(side="right")
+    def _insert_diff_line(self, text: str, tag: str):
+        self.diff_text.insert(tk.END, text + "\n", (tag,))
+
+    def _set_review_buttons_state(self, state: str):
+        for button in (self.accept_button, self.reject_button):
+            try:
+                if state == "normal":
+                    button.state(["!disabled"])
+                else:
+                    button.state(["disabled"])
+            except Exception:
+                pass
+
+    def _accept_current_suggestion(self):
+        edit = self._current_review_edit()
+        if edit is None:
+            messagebox.showwarning("Uyarı", "Uygulanacak öneri yok.")
+            return
+
+        if self.workspace_buffer.accept_suggestion(edit.id):
+            self._load_content()
+            self._refresh_suggestion_selector()
+            self._update_status()
+            self._set_hint("Öneri kabul edildi.")
+            return
+
+        if edit.stale:
+            messagebox.showwarning(
+                "Öneri Geçersiz",
+                "Çalışma alanı bu öneri hazırlandıktan sonra değişti; "
+                "öneri uygulanmadı. Lütfen yeni bir öneri isteyin.",
+            )
+            self._refresh_suggestion_selector()
+            return
+
+        messagebox.showerror("Hata", "Öneri kabul edilemedi.")
+
+    def _reject_current_suggestion(self):
+        edit = self._current_review_edit()
+        if edit is None:
+            messagebox.showwarning("Uyarı", "Reddedilecek öneri yok.")
+            return
+
+        if self.workspace_buffer.reject_suggestion(edit.id):
+            self._refresh_suggestion_selector()
+            self._update_status()
+            self._set_hint("Öneri reddedildi.")
+        else:
+            messagebox.showerror("Hata", "Öneri reddedilemedi.")
+
+    # ------------------------------------------------------------- history
 
     def _show_version_history(self):
         """Show version history dialog."""
@@ -473,6 +698,7 @@ class WorkspaceEditor(ttk.Frame):
             version_id = version_tree.item(selection[0])["tags"][0]
             if self.workspace_buffer.restore_version(version_id):
                 self._load_content()
+                self._refresh_suggestion_selector()
                 self._update_status()
                 messagebox.showinfo("Başarılı", "Versiyon geri yüklendi.")
                 history_window.destroy()
@@ -487,6 +713,7 @@ class WorkspaceEditor(ttk.Frame):
         if messagebox.askyesno("Onay", "Çalışma alanını temizlemek istediğinizden emin misiniz?"):
             self.workspace_buffer.clear_all()
             self._load_content()
+            self._refresh_suggestion_selector()
             self._update_status()
 
     def _undo(self):
@@ -505,7 +732,7 @@ class WorkspaceEditor(ttk.Frame):
         result: float,
         unit: str,
     ):
-        """Insert calculation result into workspace."""
+        """Insert calculation result into workspace at the cursor."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         formatted_result = f"""
@@ -519,17 +746,30 @@ Sonuç: {result} {unit}
 
 """
 
-        cursor_pos = self.text_editor.index(tk.INSERT)
-        self.text_editor.insert(cursor_pos, formatted_result)
-
+        previous_editing = self._user_editing
         self._user_editing = False
-        current_content = self.text_editor.get("1.0", tk.END).rstrip("\n")
-        self.workspace_buffer.set_content(current_content, "user", f"Calculation result inserted: {calc_name}")
-        self._last_known_content = current_content
-        self._user_editing = True
+        try:
+            cursor_pos = self.text_editor.index(tk.INSERT)
+            self.text_editor.insert(cursor_pos, formatted_result)
+            # İmleç eklenen bloğun sonuna taşınır; sonraki eklemeler üst üste binmez.
+            self.text_editor.mark_set(
+                tk.INSERT, f"{cursor_pos} + {len(formatted_result)}c"
+            )
+            self.text_editor.see(tk.INSERT)
+            self.text_editor.edit_modified(False)
+
+            current_content = self.text_editor.get("1.0", tk.END).rstrip("\n")
+            self.workspace_buffer.set_content(
+                current_content, "user", f"Calculation result inserted: {calc_name}"
+            )
+            self._last_known_content = current_content
+        finally:
+            self._user_editing = previous_editing
 
         self._update_line_numbers()
         self._update_status()
+        if self._review_pane_visible:
+            self._refresh_suggestion_selector()
 
     def get_current_content(self) -> str:
         """Get current editor content."""
@@ -537,12 +777,16 @@ Sonuç: {result} {unit}
 
     def set_content(self, content: str):
         """Set editor content."""
+        previous_editing = self._user_editing
         self._user_editing = False
-        self.text_editor.delete("1.0", tk.END)
-        self.text_editor.insert("1.0", content)
-        self.workspace_buffer.set_content(content, "system", "Content loaded")
-        self._last_known_content = content
-        self._user_editing = True
+        try:
+            self.text_editor.delete("1.0", tk.END)
+            self.text_editor.insert("1.0", content)
+            self.text_editor.edit_modified(False)
+            self.workspace_buffer.set_content(content, "system", "Content loaded")
+            self._last_known_content = self.text_editor.get("1.0", tk.END).rstrip("\n")
+        finally:
+            self._user_editing = previous_editing
 
         self._update_line_numbers()
         self._update_status()

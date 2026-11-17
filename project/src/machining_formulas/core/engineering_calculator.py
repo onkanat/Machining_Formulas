@@ -3,7 +3,6 @@ from __future__ import annotations
 #! .venv/bin/python
 # -*- coding : utf-8 -*-
 # Autor:Hakan KILIÇASLAN 2025
-# flake8: noqa
 
 import math
 from typing import Any, Callable, Dict, List, Union
@@ -144,7 +143,7 @@ class EngineeringCalculator:
                     "Vf": "mm/min (table feed)",
                     "n": "rpm (spindle speed)",
                     "ZEFF": "count (effective teeth)",
-                    "result": "mm",
+                    "result": "mm/diş",
                 },
             },
             "Feed per revolution": {
@@ -226,74 +225,112 @@ class EngineeringCalculator:
             },
         }
 
+    def _validate_positive_args(
+        self,
+        category_label: str,
+        definition: str,
+        args: tuple,
+        param_names: List[str],
+    ) -> None:
+        for index, value in enumerate(args):
+            name = param_names[index] if index < len(param_names) else str(index)
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"{category_label} '{definition}': '{name}' sayısal olmalıdır."
+                ) from exc
+            if not math.isfinite(numeric) or numeric <= 0:
+                display = self.PARAM_TURKISH_NAMES.get(name, name)
+                raise ValueError(
+                    f"{category_label} '{definition}': '{display}' ({name}) "
+                    "pozitif bir sayı olmalıdır."
+                )
+
+    def _parameter_names(self, calc_definition: Dict[str, Any]) -> List[str]:
+        return [name for name in calc_definition["units"] if name != "result"]
+
     def calculate_material_mass(
         self, shape: str, density: float, *args: Union[float, int]
     ) -> float:
         """Calculate mass of a given shape with specified material density."""
         try:
+            try:
+                density_value = float(density)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Yoğunluk (density) sayısal olmalıdır.") from exc
+            if not math.isfinite(density_value) or density_value <= 0:
+                raise ValueError("Yoğunluk (density) pozitif bir sayı olmalıdır.")
+            self._validate_positive_args(
+                "Kütle hesabı",
+                shape,
+                args,
+                self.get_shape_parameters(shape),
+            )
             volume_mm3 = self.shape_definitions[shape](*args)
             volume_cm3 = volume_mm3 / 1000.0
-            return volume_cm3 * density
+            return volume_cm3 * density_value
         except KeyError:
             raise ValueError(f"Invalid shape: {shape}")
         except TypeError as e:
             raise ValueError(f"Incorrect arguments for shape {shape}: {str(e)}")
+        except ValueError:
+            raise
         except Exception as e:
             raise ValueError(f"Calculation error for shape {shape}: {str(e)}")
+
+    def _definitions_for(self, category: str) -> Dict[str, Any]:
+        return {
+            "turning": self.turning_definitions,
+            "milling": self.milling_definitions,
+            "drilling": self.drilling_definitions,
+        }[category]
+
+    def _calculate(self, category: str, definition: str, args: tuple) -> Dict[str, Any]:
+        label = self.CATEGORY_LABELS[category]
+        try:
+            calc_definition = self._definitions_for(category)[definition]
+            self._validate_positive_args(
+                label, definition, args, self._parameter_names(calc_definition)
+            )
+            return {
+                "value": calc_definition["formula"](*args),
+                "units": calc_definition["units"]["result"],
+            }
+        except KeyError:
+            raise ValueError(f"Invalid {category} calculation: {definition}")
+        except TypeError as e:
+            raise ValueError(
+                f"Incorrect arguments for {category} calculation {definition}: {str(e)}"
+            )
+        except ZeroDivisionError as e:
+            raise ValueError(f"{label} '{definition}' hesaplanamadı: sıfıra bölme.") from e
+
+    def calculate(
+        self, category: str, definition: str, *args: Union[float, int]
+    ) -> Dict[str, Any]:
+        """Dispatch a calculation by category name."""
+        if category not in self.CATEGORY_LABELS:
+            raise ValueError(f"Desteklenmeyen kategori: {category}")
+        return self._calculate(category, definition, args)
 
     def calculate_turning(
         self, definition: str, *args: Union[float, int]
     ) -> Dict[str, Any]:
         """Calculate turning parameters based on the provided definition."""
-        try:
-            calc_definition = self.turning_definitions[definition]
-            calculated_value = calc_definition["formula"](*args)
-            return {
-                "value": calculated_value,
-                "units": calc_definition["units"]["result"],
-            }
-        except KeyError:
-            raise ValueError(f"Invalid turning calculation: {definition}")
-        except TypeError as e:
-            raise ValueError(
-                f"Incorrect arguments for turning calculation {definition}: {str(e)}"
-            )
+        return self._calculate("turning", definition, args)
 
     def calculate_milling(
         self, definition: str, *args: Union[float, int]
     ) -> Dict[str, Any]:
         """Calculate milling parameters based on the provided definition."""
-        try:
-            calc_definition = self.milling_definitions[definition]
-            calculated_value = calc_definition["formula"](*args)
-            return {
-                "value": calculated_value,
-                "units": calc_definition["units"]["result"],
-            }
-        except KeyError:
-            raise ValueError(f"Invalid milling calculation: {definition}")
-        except TypeError as e:
-            raise ValueError(
-                f"Incorrect arguments for milling calculation {definition}: {str(e)}"
-            )
+        return self._calculate("milling", definition, args)
 
     def calculate_drilling(
         self, definition: str, *args: Union[float, int]
     ) -> Dict[str, Any]:
         """Calculate drilling parameters based on the provided definition."""
-        try:
-            calc_definition = self.drilling_definitions[definition]
-            calculated_value = calc_definition["formula"](*args)
-            return {
-                "value": calculated_value,
-                "units": calc_definition["units"]["result"],
-            }
-        except KeyError:
-            raise ValueError(f"Invalid drilling calculation: {definition}")
-        except TypeError as e:
-            raise ValueError(
-                f"Incorrect arguments for drilling calculation {definition}: {str(e)}"
-            )
+        return self._calculate("drilling", definition, args)
 
     def get_available_calculations(self) -> Dict[str, List[str]]:
         """Return a list of supported calculation keys."""
@@ -332,6 +369,12 @@ class EngineeringCalculator:
             "tube": "Boru",
             "sphere": "Küre",
         }
+
+    CATEGORY_LABELS: Dict[str, str] = {
+        "turning": "Tornalama",
+        "milling": "Frezeleme",
+        "drilling": "Delme",
+    }
 
     PARAM_TURKISH_NAMES: Dict[str, str] = {
         "Dm": "İşlenen Çap",

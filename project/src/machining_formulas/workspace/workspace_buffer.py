@@ -2,11 +2,35 @@
 
 from __future__ import annotations
 
+import difflib
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+
+def line_diff(old_text: str, new_text: str, context: int = 2) -> List[Tuple[str, str]]:
+    """Return a line-based diff as ``(tag, text)`` pairs.
+
+    Tags are ``" "`` (context), ``"-"`` (removed), ``"+"`` (added) and ``"@"``
+    (hunk header). Identical inputs produce an empty list.
+    """
+    old_lines = old_text.splitlines()
+    new_lines = new_text.splitlines()
+    if old_lines == new_lines:
+        return []
+
+    chunks = list(difflib.unified_diff(old_lines, new_lines, lineterm="", n=context))
+    # İlk iki satır ---/+++ başlıklarıdır; içerik satırı gibi görünseler de atılır.
+    result: List[Tuple[str, str]] = []
+    for chunk in chunks[2:]:
+        tag = chunk[:1]
+        if tag in (" ", "-", "+"):
+            result.append((tag, chunk[1:]))
+        else:
+            result.append(("@", chunk))
+    return result
 
 
 class EditType(Enum):
@@ -33,6 +57,9 @@ class WorkspaceEdit:
     author: str = "user"
     accepted: bool = True
     rejected: bool = False
+    stale: bool = False
+    # "Sona ekle" önerileri kullanıcı belgeyi düzenlese bile sona uygulanır.
+    at_end: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -45,6 +72,8 @@ class WorkspaceEdit:
             "author": self.author,
             "accepted": self.accepted,
             "rejected": self.rejected,
+            "stale": self.stale,
+            "at_end": self.at_end,
         }
 
     @classmethod
@@ -59,6 +88,8 @@ class WorkspaceEdit:
         edit.author = data["author"]
         edit.accepted = data["accepted"]
         edit.rejected = data.get("rejected", False)
+        edit.stale = data.get("stale", False)
+        edit.at_end = data.get("at_end", False)
         return edit
 
 
@@ -188,6 +219,8 @@ class WorkspaceBuffer:
         end: int,
         text: str,
         description: str = "",
+        *,
+        at_end: bool = False,
     ) -> WorkspaceEdit:
         if start < 0:
             start = 0
@@ -198,25 +231,52 @@ class WorkspaceBuffer:
 
         old_text = self.content[start:end]
 
+        # Aynı öneri tekrar üretildiğinde (ör. model aynı yanıtı döndürdüğünde)
+        # listeye ikinci bir kopya eklemek yerine mevcut öneri döndürülür.
+        for existing in self.get_pending_suggestions():
+            if existing.old_text == old_text and existing.new_text == text:
+                return existing
+
         edit = WorkspaceEdit(
-            edit_type=EditType.MODEL_REPLACE,
+            edit_type=EditType.MODEL_INSERT if not old_text else EditType.MODEL_REPLACE,
             position=start,
             old_text=old_text,
             new_text=text,
             author="model",
             accepted=False,
+            at_end=at_end,
         )
         self.edits.append(edit)
         return edit
 
+    def _suggestion_is_current(self, edit: WorkspaceEdit) -> bool:
+        """Return False when the workspace changed after the suggestion was made."""
+        end = edit.position + len(edit.old_text)
+        if edit.position < 0 or end > len(self.content):
+            edit.stale = True
+            return False
+        if self.content[edit.position:end] != edit.old_text:
+            edit.stale = True
+            return False
+        return True
+
     def accept_suggestion(self, edit_id: str) -> bool:
         for edit in self.edits:
             if edit.id == edit_id and not edit.accepted:
+                if edit.edit_type != EditType.MODEL_INSERT and not self._suggestion_is_current(edit):
+                    return False
+
                 if edit.edit_type == EditType.MODEL_INSERT:
+                    position = (
+                        len(self.content)
+                        if edit.at_end
+                        else max(0, min(edit.position, len(self.content)))
+                    )
+                    edit.position = position
                     self.content = (
-                        self.content[:edit.position]
+                        self.content[:position]
                         + edit.new_text
-                        + self.content[edit.position:]
+                        + self.content[position:]
                     )
                 elif edit.edit_type == EditType.MODEL_DELETE:
                     self.content = (
@@ -253,7 +313,10 @@ class WorkspaceBuffer:
         return [
             edit
             for edit in self.edits
-            if edit.author == "model" and edit.accepted is False and not edit.rejected
+            if edit.author == "model"
+            and edit.accepted is False
+            and not edit.rejected
+            and not edit.stale
         ]
 
     def get_edit_history(self, limit: int = 50) -> List[WorkspaceEdit]:

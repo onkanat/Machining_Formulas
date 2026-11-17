@@ -6,64 +6,123 @@ and dynamic tool schema construction to keep the GUI-focused classes lean.
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List
+import os
+from typing import Dict, Iterable, List, Tuple
 
 from machining_formulas.core.engineering_calculator import EngineeringCalculator
 
-"""
-TODO: ip adresi yerine localhost kullanılacak ve son kullanılan IP adresi kalıcı hale getirilecek.
-_DEFAULT_CHAT_URL = "http://localhost:11434/v1/chat"
-_DEFAULT_TAGS_URL = "http://localhost:11434/api/tags"
-"""
+_DEFAULT_CHAT_URL = "http://localhost:11434/v1/chat/completions"
+_DEFAULT_MODEL_LIST_URL = "http://localhost:11434/v1/models"
 
-_DEFAULT_CHAT_URL = "http://localhost:11434/v1/chat"
-_DEFAULT_TAGS_URL = "http://localhost:11434/api/tags"
+# OpenAI-uyumlu sunucular için /v1/chat/completions, Ollama için /api/chat.
+_CHAT_SUFFIXES = ("/v1/chat/completions", "/v1/chat", "/api/chat")
+_MODEL_LIST_SUFFIXES = ("/v1/models", "/api/tags", "/v1/tags")
+
+
+def _strip_known_suffix(url: str, suffixes: tuple[str, ...]) -> str:
+    for suffix in suffixes:
+        if url.endswith(suffix):
+            return url[: -len(suffix)]
+    return url.rsplit("/", 1)[0]
+
+# Ollama soğuk başlangıçta modeli belleğe yüklerken dakikalar sürebilir. Bu yüzden
+# bağlantı kısa (ulaşılamayan sunucu hızlı düşsün), yanıt bekleme süresi uzun tutulur.
+OLLAMA_CONNECT_TIMEOUT_SECONDS = 10.0
+OLLAMA_READ_TIMEOUT_SECONDS = 300.0
+OLLAMA_CHAT_TIMEOUT: Tuple[float, float] = (
+    OLLAMA_CONNECT_TIMEOUT_SECONDS,
+    OLLAMA_READ_TIMEOUT_SECONDS,
+)
+# Model listesi ve bağlantı testi model yüklemez; kısa kalabilir.
+OLLAMA_LIST_TIMEOUT_SECONDS = 15.0
+OLLAMA_TEST_TIMEOUT_SECONDS = 10.0
+
+API_KEY_ENV_VAR = "MACHINING_FORMULAS_API_KEY"
+# Yerel gateway'in kendi anahtarı varsa bu değişkenle de verilebilir; anahtar
+# kodda tutulmaz, yalnızca ortamdan okunur.
+FALLBACK_API_KEY_ENV_VARS = ("STRATA_API_KEY",)
+
+
+def resolve_api_key(explicit: str | None = None) -> str:
+    """Return the API key from the caller, else from the environment."""
+    if explicit and explicit.strip():
+        return explicit.strip()
+    for env_var in (API_KEY_ENV_VAR, *FALLBACK_API_KEY_ENV_VARS):
+        value = os.environ.get(env_var, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def auth_headers(api_key: str | None = None) -> Dict[str, str]:
+    """Build request headers, adding a bearer token when a key is configured."""
+    headers = {"Content-Type": "application/json"}
+    key = resolve_api_key(api_key)
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
 
 
 def normalize_chat_url(url: str | None) -> str:
-    """Normalize user input to the canonical Ollama chat endpoint."""
+    """Normalize user input to a chat endpoint.
+
+    OpenAI-uyumlu sunucular (``/v1/chat/completions``) ve Ollama'nın yerel
+    bitiş noktası (``/api/chat``) birlikte desteklenir; kullanıcı açık bir
+    bitiş noktası yazdıysa o korunur.
+    """
     if not url:
         return _DEFAULT_CHAT_URL
 
     cleaned = url.strip().rstrip("/")
 
+    if cleaned.endswith("/v1/chat/completions"):
+        return cleaned
     if cleaned.endswith("/v1/chat") or cleaned.endswith("/api/chat"):
         return cleaned
     if cleaned.endswith("/v1") or cleaned.endswith("/api"):
-        return f"{cleaned}/chat"
-    if cleaned.endswith("/v1/tags") or cleaned.endswith("/api/tags"):
+        suffix = "/chat" if cleaned.endswith("/api") else "/chat/completions"
+        return f"{cleaned}{suffix}"
+    if cleaned.endswith("/v1/tags") or cleaned.endswith("/v1/models"):
+        base = cleaned.rsplit("/", 1)[0]
+        return f"{base}/chat/completions"
+    if cleaned.endswith("/api/tags"):
         base = cleaned.rsplit("/", 1)[0]
         return f"{base}/chat"
     if "/v1/" in cleaned:
         base = cleaned.split("/v1/", 1)[0]
-        return f"{base}/v1/chat"
+        return f"{base}/v1/chat/completions"
     if "/api/" in cleaned:
         base = cleaned.split("/api/", 1)[0]
         return f"{base}/api/chat"
-    return f"{cleaned}/v1/chat"
+    return f"{cleaned}/v1/chat/completions"
 
 
-def build_tags_url(url: str | None) -> str:
-    """Normalize input to the canonical Ollama tags endpoint."""
+def build_model_list_url(url: str | None) -> str:
+    """Normalize input to the model-list endpoint the server exposes."""
     if not url:
-        return _DEFAULT_TAGS_URL
+        return _DEFAULT_MODEL_LIST_URL
 
     cleaned = url.strip().rstrip("/")
 
-    if cleaned.endswith("/v1/tags") or cleaned.endswith("/api/tags"):
+    if cleaned.endswith("/v1/models") or cleaned.endswith("/v1/tags") or cleaned.endswith("/api/tags"):
         return cleaned
-    if cleaned.endswith("/v1/chat") or cleaned.endswith("/api/chat"):
-        base = cleaned.rsplit("/", 1)[0]
-        return f"{base}/tags"
-    if cleaned.endswith("/v1") or cleaned.endswith("/api"):
+    if cleaned.endswith("/v1/chat/completions"):
+        return f"{cleaned[: -len('/chat/completions')]}/models"
+    if cleaned.endswith("/v1/chat"):
+        return build_model_list_url(cleaned[: -len("/chat")])
+    if cleaned.endswith("/api/chat"):
+        return build_model_list_url(cleaned[: -len("/chat")])
+    if cleaned.endswith("/v1"):
+        return f"{cleaned}/models"
+    if cleaned.endswith("/api"):
         return f"{cleaned}/tags"
     if "/v1/" in cleaned:
         base = cleaned.split("/v1/", 1)[0]
-        return f"{base}/v1/tags"
+        return f"{base}/v1/models"
     if "/api/" in cleaned:
         base = cleaned.split("/api/", 1)[0]
         return f"{base}/api/tags"
-    return f"{cleaned}/v1/tags"
+    return f"{cleaned}/v1/models"
 
 
 def _dedupe_preserve_order(urls: Iterable[str]) -> List[str]:
@@ -82,17 +141,11 @@ def candidate_chat_urls(
     *,
     force_legacy_first: bool = False,
 ) -> List[str]:
-    """Generate chat endpoint candidates with /v1 and /api fallbacks."""
+    """Generate chat endpoint candidates: OpenAI uyumlu, /v1/chat ve /api/chat."""
     primary = normalize_chat_url(url)
+    base = _strip_known_suffix(primary, _CHAT_SUFFIXES)
     candidates: List[str] = [primary]
-
-    if "/v1/chat" in primary:
-        candidates.append(primary.replace("/v1/chat", "/api/chat"))
-    elif "/api/chat" in primary:
-        candidates.append(primary.replace("/api/chat", "/v1/chat"))
-    else:
-        base = primary.rsplit("/", 1)[0]
-        candidates.extend([f"{base}/v1/chat", f"{base}/api/chat"])
+    candidates.extend(f"{base}{suffix}" for suffix in _CHAT_SUFFIXES)
 
     deduped = _dedupe_preserve_order(candidates)
     if force_legacy_first:
@@ -100,25 +153,23 @@ def candidate_chat_urls(
     return deduped
 
 
-def candidate_tags_urls(url: str | None) -> List[str]:
-    """Generate tags endpoint candidates with /v1 and /api fallbacks."""
-    primary = build_tags_url(url)
+def candidate_model_list_urls(url: str | None) -> List[str]:
+    """Generate model-list candidates: /v1/models ve Ollama etiket uçları."""
+    primary = build_model_list_url(url)
+    base = _strip_known_suffix(primary, _MODEL_LIST_SUFFIXES)
     candidates: List[str] = [primary]
-
-    if "/v1/tags" in primary:
-        candidates.append(primary.replace("/v1/tags", "/api/tags"))
-    elif "/api/tags" in primary:
-        candidates.append(primary.replace("/api/tags", "/v1/tags"))
-    else:
-        base = primary.rsplit("/", 1)[0]
-        candidates.extend([f"{base}/v1/tags", f"{base}/api/tags"])
+    candidates.extend(f"{base}{suffix}" for suffix in _MODEL_LIST_SUFFIXES)
 
     return _dedupe_preserve_order(candidates)
 
 
 def prepare_legacy_chat_payload(payload: Dict) -> Dict:
-    """Strip unsupported fields for legacy /api/chat endpoint."""
-    blocked_keys = {"tools", "options"}
+    """Adapt an OpenAI-style payload to the native /api/chat endpoint.
+
+    Ollama's native endpoint supports ``tools``, so only fields that the
+    OpenAI-compatible layer adds are dropped.
+    """
+    blocked_keys = {"options"}
     return {key: value for key, value in payload.items() if key not in blocked_keys}
 
 
@@ -219,7 +270,10 @@ def build_calculator_tools_definition(
         },
         "length": {
             "type": "number",
-            "description": "Malzemenin ekstrüzyon uzunluğu (mm). Küre ('sphere') dışındaki tüm şekiller için zorunludur. Örnek: 100",
+            "description": (
+                "Malzemenin ekstrüzyon uzunluğu (mm). Küre ('sphere') dışındaki tüm "
+                "şekiller için zorunludur; küre için gönderilmemelidir. Örnek: 100"
+            ),
         },
     }
 
@@ -261,7 +315,7 @@ def build_calculator_tools_definition(
                 "parameters": {
                     "type": "object",
                     "properties": mass_params,
-                    "required": ["shape_key", "density", "length"],
+                    "required": ["shape_key", "density"],
                 },
             },
         }

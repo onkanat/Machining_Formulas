@@ -7,8 +7,6 @@ hafifletilmiş bir `AdvancedCalculator` sağlar.
 Not: Tam GUI özellikleri hedeflenmiyor; odak `handle_tool_calls()`.
 """
 
-# flake8: noqa
-
 from __future__ import annotations
 
 import json
@@ -23,6 +21,8 @@ from machining_formulas.llm.material_utils import (
     prepare_material_mass_arguments,
 )
 from machining_formulas.llm.ollama_utils import (
+    OLLAMA_CHAT_TIMEOUT,
+    auth_headers,
     candidate_chat_urls,
     prepare_legacy_chat_payload,
 )
@@ -56,8 +56,6 @@ class AdvancedCalculator:
         self.history: List[Dict[str, Any]] = []
         self.current_chat_url: Optional[str] = None
         self._last_tool_run_details: Optional[Dict[str, Any]] = None
-        self._tool_loop_limit: int = 4
-        self.debug_show_raw_model_responses: bool = False
         self.force_legacy_chat: bool = False
         self._calculator = EngineeringCalculator()
 
@@ -80,7 +78,7 @@ class AdvancedCalculator:
         url_candidates: List[str],
         payload: Dict[str, Any],
         headers: Dict[str, str],
-        timeout: int = 60,
+        timeout: float | Tuple[float, float] = OLLAMA_CHAT_TIMEOUT,
     ) -> Tuple[Any, str, bool]:
         """Try candidate URLs until one succeeds.
 
@@ -105,7 +103,11 @@ class AdvancedCalculator:
                 else:
                     last_error = ValueError(f"HTTP {resp.status_code}: {resp.text}")
             except requests.exceptions.Timeout as t_err:
-                last_error = ValueError(f"Zaman aşımı (Ollama sunucusu {timeout} saniye içinde yanıt vermedi): {t_err}")
+                wait_seconds = timeout[1] if isinstance(timeout, tuple) else timeout
+                last_error = ValueError(
+                    f"Zaman aşımı (Ollama sunucusu {wait_seconds:g} saniye içinde yanıt vermedi; "
+                    f"model ilk kez yükleniyorsa bu süre uzayabilir): {t_err}"
+                )
             except requests.exceptions.RequestException as req_err:
                 last_error = ValueError(f"Bağlantı Hatası (Ollama sunucusuna ulaşılamadı): {req_err}")
             except Exception as exc:  # noqa: BLE001
@@ -122,7 +124,8 @@ class AdvancedCalculator:
         messages_history: List[Dict[str, Any]],
         tools_definition: List[Dict[str, Any]],
         *,
-        timeout: int = 60,
+        timeout: float | Tuple[float, float] = OLLAMA_CHAT_TIMEOUT,
+        api_key: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Send a tool-enabled chat request; if tool_calls come back, execute them once."""
         url_candidates = self._candidate_chat_urls(chat_url)
@@ -133,7 +136,7 @@ class AdvancedCalculator:
             "stream": False,
             "tools": tools_definition,
         }
-        headers = {"Content-Type": "application/json"}
+        headers = auth_headers(api_key)
 
         response, used_url, _used_legacy = self._post_chat_with_legacy_support(
             url_candidates,
@@ -154,6 +157,7 @@ class AdvancedCalculator:
                 tool_calls,
                 tools_definition,
                 timeout=timeout,
+                api_key=api_key,
             )
 
         updated_history = list(messages_history) + [assistant_message]
@@ -169,7 +173,8 @@ class AdvancedCalculator:
         tool_calls: List[Dict[str, Any]],
         _tools_definition: List[Dict[str, Any]],
         *,
-        timeout: int = 60,
+        timeout: float | Tuple[float, float] = OLLAMA_CHAT_TIMEOUT,
+        api_key: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Execute tool calls, append tool outputs, then ask the model for follow-up.
 
@@ -228,7 +233,7 @@ class AdvancedCalculator:
             "stream": False,
         }
 
-        headers = {"Content-Type": "application/json"}
+        headers = auth_headers(api_key)
 
         response, used_url, _used_legacy = self._post_chat_with_legacy_support(
             url_candidates,
@@ -280,6 +285,15 @@ class AdvancedCalculator:
             return json.loads(raw_args)
         return {}
 
+    def execute_tool(
+        self,
+        tool_name: str,
+        arguments: Dict[str, Any],
+        messages_history: Optional[Iterable[Dict[str, Any]]] = None,
+    ) -> _ToolRunResult:
+        """Public entry point for running a tool outside the chat loop."""
+        return self._execute_tool(tool_name, arguments, messages_history)
+
     def _execute_tool(
         self,
         tool_name: Optional[str],
@@ -293,10 +307,13 @@ class AdvancedCalculator:
 
         if tool_name == "calculate_material_mass":
             params = prepare_material_mass_arguments(calc, arguments, messages_history)
+            dimensions = list(params.dimensions)
+            if params.length is not None:
+                dimensions.append(params.length)
             mass_g = calc.calculate_material_mass(
                 params.shape_key,
                 params.density,
-                *(params.dimensions + [params.length]),
+                *dimensions,
             )
             content = f"{mass_g:.2f} g"
             return _ToolRunResult(
@@ -397,15 +414,7 @@ class AdvancedCalculator:
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"'{name}' sayısal olmalıdır") from exc
 
-        if category == "turning":
-            result = calc.calculate_turning(method_key, *args)
-        elif category == "milling":
-            result = calc.calculate_milling(method_key, *args)
-        elif category == "drilling":
-            result = calc.calculate_drilling(method_key, *args)
-        else:
-            raise ValueError(f"Desteklenmeyen kategori: {category}")
-
+        result = calc.calculate(category, method_key, *args)
         return float(result["value"]), str(result.get("units", ""))
 
     def _format_value_with_unit(self, value: float, unit: str) -> str:

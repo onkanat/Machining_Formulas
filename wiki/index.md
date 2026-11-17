@@ -25,7 +25,6 @@ Proje, canlı kod tabanını `project/` klasöründe tutmaktadır. Ana kaynak ko
 3. **`workspace/`**: İşbirlikçi düzenleme ve sürüm yönetimi sağlayan arabellek katmanı.
    - [workspace_buffer.py](file:///Users/hakankilicaslan/GitHub/Machining_Formulas/project/src/machining_formulas/workspace/workspace_buffer.py)
    - [workspace_editor.py](file:///Users/hakankilicaslan/GitHub/Machining_Formulas/project/src/machining_formulas/workspace/workspace_editor.py)
-   - [workspace_manager.py](file:///Users/hakankilicaslan/GitHub/Machining_Formulas/project/src/machining_formulas/workspace/workspace_manager.py)
    - İlgili Entity Dokümanı: [[wiki/entities/workspace]]
 4. **`llm/`**: Ollama entegrasyonu ve araç (tool) şemalarının dinamik üretilmesi.
    - [ollama_utils.py](file:///Users/hakankilicaslan/GitHub/Machining_Formulas/project/src/machining_formulas/llm/ollama_utils.py)

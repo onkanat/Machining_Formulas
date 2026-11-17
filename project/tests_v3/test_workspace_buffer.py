@@ -7,7 +7,12 @@ users and models can edit content together.
 
 import pytest
 from datetime import datetime
-from machining_formulas.workspace.workspace_buffer import WorkspaceBuffer, WorkspaceEdit, EditType
+from machining_formulas.workspace.workspace_buffer import (
+    EditType,
+    WorkspaceBuffer,
+    WorkspaceEdit,
+    line_diff,
+)
 
 
 class TestWorkspaceBuffer:
@@ -312,13 +317,127 @@ class TestCollaborativeEditing:
         # User edits the same area before accepting suggestion
         buffer.replace_text(6, 11, "Earth", "user")
 
-        # Accept model suggestion (should handle gracefully)
+        # Accept model suggestion: it is stale, so it must be refused
         success = buffer.accept_suggestion(suggestion.id)
 
-        # The exact behavior depends on implementation,
-        # but it should not crash and should be deterministic
-        assert isinstance(success, bool)
-        assert buffer.get_content() is not None
+        assert success is False
+        assert suggestion.stale is True
+        assert buffer.get_content() == "Hello Earth"
+
+
+class TestLineDiff:
+    """Test the line-based diff used by the review panel."""
+
+    def test_identical_text_has_no_diff(self):
+        assert line_diff("a\nb", "a\nb") == []
+
+    def test_added_lines_are_marked(self):
+        diff = line_diff("a\nb", "a\nb\nc")
+        added = [text for tag, text in diff if tag == "+"]
+        assert added == ["c"]
+        assert all(tag != "-" for tag, _ in diff)
+
+    def test_removed_lines_are_marked(self):
+        diff = line_diff("a\nb\nc", "a\nc")
+        removed = [text for tag, text in diff if tag == "-"]
+        assert removed == ["b"]
+
+    def test_replaced_line_shows_both_sides(self):
+        diff = line_diff("Hello World", "Hello Universe")
+        assert ("-", "Hello World") in diff
+        assert ("+", "Hello Universe") in diff
+
+    def test_context_lines_are_kept(self):
+        old = "1\n2\n3\n4\n5\n6\n7"
+        new = "1\n2\n3\n4\n5\n6\nseven"
+        diff = line_diff(old, new)
+        context = [text for tag, text in diff if tag == " "]
+        assert "5" in context
+        assert ("-", "7") in diff
+        assert ("+", "seven") in diff
+
+    def test_empty_old_text_is_all_additions(self):
+        diff = line_diff("", "Soru: x\n\nYanıt:\ny")
+        content_lines = [(tag, text) for tag, text in diff if tag != "@"]
+        assert all(tag == "+" for tag, _ in content_lines)
+        assert [text for _, text in content_lines] == ["Soru: x", "", "Yanıt:", "y"]
+
+
+class TestSuggestionReviewFlow:
+    """Test the suggestion types and dedupe used by the review panel."""
+
+    def test_empty_old_text_creates_insert_suggestion(self):
+        buffer = WorkspaceBuffer()
+        buffer.set_content("Hello", "user")
+
+        suggestion = buffer.suggest_edit(5, 5, " World")
+
+        assert suggestion.edit_type == EditType.MODEL_INSERT
+        assert suggestion.old_text == ""
+
+    def test_duplicate_suggestion_is_not_stacked(self):
+        buffer = WorkspaceBuffer()
+        buffer.set_content("Hello", "user")
+
+        first = buffer.suggest_edit(5, 5, " World")
+        second = buffer.suggest_edit(5, 5, " World")
+
+        assert first.id == second.id
+        assert len(buffer.get_pending_suggestions()) == 1
+
+    def test_accepting_at_end_suggestion_appends_after_later_edits(self):
+        buffer = WorkspaceBuffer()
+        buffer.set_content("Hello", "user")
+        suggestion = buffer.suggest_edit(5, 5, "\nWorld", at_end=True)
+
+        buffer.insert_text(len(buffer.get_content()), "!", "user")
+        assert buffer.accept_suggestion(suggestion.id) is True
+
+        assert buffer.get_content() == "Hello!\nWorld"
+
+    def test_accepting_insert_suggestion_clamps_position(self):
+        buffer = WorkspaceBuffer()
+        buffer.set_content("Hello", "user")
+        suggestion = buffer.suggest_edit(100, 100, "!")
+
+        assert buffer.accept_suggestion(suggestion.id) is True
+        assert buffer.get_content() == "Hello!"
+
+    def test_at_end_flag_survives_round_trip(self):
+        edit = WorkspaceEdit(edit_type=EditType.MODEL_INSERT, at_end=True)
+
+        restored = WorkspaceEdit.from_dict(edit.to_dict())
+
+        assert restored.at_end is True
+
+
+class TestAnswerBlock:
+    """Test how model answers are formatted before insertion."""
+
+    def test_question_is_kept_when_short(self):
+        from machining_formulas.workspace.workspace_editor import format_answer_block
+
+        block = format_answer_block("Çap 100 mm, 550 rpm?", "Vc = 172.79 m/min")
+
+        assert block.startswith("Soru: Çap 100 mm, 550 rpm?")
+        assert "Vc = 172.79 m/min" in block
+
+    def test_answer_only_when_question_missing(self):
+        from machining_formulas.workspace.workspace_editor import format_answer_block
+
+        assert format_answer_block("", "  Vc = 172.79 m/min  ") == "Vc = 172.79 m/min"
+
+    def test_long_question_is_not_embedded(self):
+        from machining_formulas.workspace.workspace_editor import format_answer_block
+
+        block = format_answer_block("x" * 600, "yanıt")
+
+        assert block == "yanıt"
+
+    def test_empty_answer_returns_empty_block(self):
+        from machining_formulas.workspace.workspace_editor import format_answer_block
+
+        assert format_answer_block("soru", "   ") == ""
 
 
 if __name__ == "__main__":

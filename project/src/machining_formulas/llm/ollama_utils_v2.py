@@ -6,25 +6,35 @@ adaptations for the V3 Tkinter GUI to interact with Ollama servers.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Any, Dict, List
+
 import requests
 
 from machining_formulas.llm.ollama_utils import (
+    OLLAMA_CHAT_TIMEOUT,
+    OLLAMA_LIST_TIMEOUT_SECONDS,
+    OLLAMA_TEST_TIMEOUT_SECONDS,
+    auth_headers,
     candidate_chat_urls,
-    candidate_tags_urls,
+    candidate_model_list_urls,
     prepare_legacy_chat_payload,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def single_chat_request(
     model_url: str,
     model_name: str,
     prompt: str,
-    timeout: int = 60,
+    timeout: float | tuple[float, float] = OLLAMA_CHAT_TIMEOUT,
+    api_key: str | None = None,
     **kwargs,
 ) -> str | Dict[str, Any]:
-    """Send a single chat request to Ollama API with endpoint fallbacks."""
+    """Send a single chat request with endpoint and protocol fallbacks."""
     url_candidates = candidate_chat_urls(model_url)
+    headers = auth_headers(api_key)
     last_error = "Uygun endpoint bulunamadı"
 
     for chat_url in url_candidates:
@@ -41,6 +51,7 @@ def single_chat_request(
             response = requests.post(
                 chat_url,
                 json=payload,
+                headers=headers,
                 timeout=timeout,
             )
 
@@ -66,73 +77,57 @@ def single_chat_request(
     return {"error": f"Request failed: {last_error}"}
 
 
-def get_available_models(model_url: str) -> List[str]:
-    """Get available models from Ollama API with robust endpoint fallbacks."""
-    url_candidates = candidate_tags_urls(model_url)
+def _extract_model_names(payload: Any) -> List[str]:
+    """Read model ids from either OpenAI (``data[].id``) or Ollama (``models[].name``)."""
+    if not isinstance(payload, dict):
+        return []
+
+    names: List[str] = []
+    for entry in payload.get("models") or []:
+        if isinstance(entry, dict) and entry.get("name"):
+            names.append(str(entry["name"]))
+
+    entries = payload.get("data")
+    if isinstance(entries, list):
+        for entry in entries:
+            if isinstance(entry, dict) and entry.get("id"):
+                names.append(str(entry["id"]))
+
+    return names
+
+
+def get_available_models(model_url: str, api_key: str | None = None) -> List[str]:
+    """Get available models from an OpenAI-compatible or Ollama server."""
+    url_candidates = candidate_model_list_urls(model_url)
+    headers = auth_headers(api_key)
 
     for tags_url in url_candidates:
         try:
-            response = requests.get(tags_url, timeout=10)
+            response = requests.get(tags_url, headers=headers, timeout=OLLAMA_LIST_TIMEOUT_SECONDS)
             if response.status_code == 200:
-                models_data = response.json().get("models", [])
-                if models_data:
-                    return [model["name"] for model in models_data]
+                names = _extract_model_names(response.json())
+                if names:
+                    return names
+            else:
+                logger.warning("Model listesi reddedildi (%s): HTTP %s", tags_url, response.status_code)
         except Exception as e:
-            print(f"Error getting models from {tags_url}: {e}")
+            logger.warning("Model listesi alınamadı (%s): %s", tags_url, e)
 
     # Fallback to empty list
     return []
 
 
-def test_connection(model_url: str) -> bool:
-    """Test connection to Ollama server using robust endpoint fallbacks."""
-    url_candidates = candidate_tags_urls(model_url)
+def test_connection(model_url: str, api_key: str | None = None) -> bool:
+    """Test connection to the model server using endpoint fallbacks."""
+    url_candidates = candidate_model_list_urls(model_url)
+    headers = auth_headers(api_key)
 
     for tags_url in url_candidates:
         try:
-            response = requests.get(tags_url, timeout=5)
+            response = requests.get(tags_url, headers=headers, timeout=OLLAMA_TEST_TIMEOUT_SECONDS)
             if response.status_code == 200:
                 return True
         except Exception:
             pass
 
     return False
-
-
-def chat_with_ollama(
-    model_url: str,
-    model_name: str,
-    messages: List[Dict[str, str]],
-    tools: Optional[List[Dict[str, Any]]] = None,
-    timeout: int = 60,
-) -> Dict[str, Any]:
-    """Send chat request to Ollama with optional tool support and candidate fallbacks."""
-    url_candidates = candidate_chat_urls(model_url)
-    last_error = "Uygun endpoint bulunamadı"
-
-    for chat_url in url_candidates:
-        is_legacy = "/api/chat" in chat_url
-        try:
-            payload: Dict[str, Any] = {
-                "model": model_name,
-                "messages": messages,
-                "stream": False,
-            }
-
-            if tools and not is_legacy:
-                payload["tools"] = tools
-
-            if is_legacy:
-                payload = prepare_legacy_chat_payload(payload)
-
-            response = requests.post(chat_url, json=payload, timeout=timeout)
-
-            if response.status_code == 200:
-                return response.json()
-            last_error = f"HTTP {response.status_code}: {response.text}"
-        except requests.exceptions.Timeout:
-            last_error = "Request timeout"
-        except Exception as e:
-            last_error = str(e)
-
-    return {"error": f"Request failed: {last_error}"}

@@ -54,3 +54,30 @@ def test_error_handling():
     # Incorrect arguments for shape
     with pytest.raises(ValueError, match="Incorrect arguments for shape"):
         ec.calculate_material_mass("circle", 7.85, 10, 20, 30)  # circle only takes radius and length (2 args)
+
+
+@pytest.mark.parametrize(
+    ("category", "method", "args"),
+    [
+        ("turning", "Spindle speed", (100, 0)),
+        ("turning", "Machining time", (100, 0.1, 0)),
+        ("turning", "Cutting speed", (-50, 1000)),
+        ("milling", "Torque", (3, 0)),
+        ("drilling", "Machining time", (50, 0)),
+    ],
+)
+def test_non_positive_inputs_raise_value_error(category, method, args):
+    ec = EngineeringCalculator()
+    with pytest.raises(ValueError, match="pozitif"):
+        getattr(ec, f"calculate_{category}")(method, *args)
+
+
+def test_material_mass_rejects_negative_dimension():
+    ec = EngineeringCalculator()
+    with pytest.raises(ValueError, match="pozitif"):
+        ec.calculate_material_mass("circle", 7.85, -25, 100)
+
+
+def test_sphere_mass_needs_no_length():
+    ec = EngineeringCalculator()
+    assert pytest.approx(ec.calculate_material_mass("sphere", 7.85, 50), rel=1e-6) == 4110.250388

@@ -61,7 +61,8 @@ def test_material_mass_tool_has_required_fields():
     assert params.get("type") == "object"
 
     required = params.get("required") or []
-    assert set(required) == {"shape_key", "density", "length"}
+    # length is conditional: required for every shape except 'sphere'.
+    assert set(required) == {"shape_key", "density"}
 
     properties = params.get("properties") or {}
     for k in ("shape_key", "density", "length"):

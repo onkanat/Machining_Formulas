@@ -66,7 +66,7 @@ class MaterialMassParameters:
     shape_key: str
     density: float
     dimensions: List[float]
-    length: float
+    length: Optional[float]
 
 
 def prepare_material_mass_arguments(
@@ -78,7 +78,7 @@ def prepare_material_mass_arguments(
     args = {key: value for key, value in arguments.items()}
     shape_key = _canonicalize_shape_key(args.pop("shape_key", None))
     density = _resolve_density(calculator, args, messages_history)
-    length = _resolve_length(args, messages_history)
+    length = _resolve_length(args, messages_history, required=shape_key != "sphere")
     user_text = _latest_user_text(messages_history)
     _ensure_radius_argument(args, shape_key, user_text)
 
@@ -135,12 +135,17 @@ def _resolve_density(
 def _resolve_length(
     args: Dict[str, Any],
     messages_history: Optional[Iterable[Dict[str, Any]]],
-) -> float:
+    *,
+    required: bool = True,
+) -> Optional[float]:
     raw_length = None
     for key in _LENGTH_KEYS:
         if key in args:
             raw_length = args.pop(key)
             break
+
+    if not required:
+        return None
 
     if raw_length is None:
         user_text = _latest_user_text(messages_history)

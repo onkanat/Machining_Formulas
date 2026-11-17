@@ -1,6 +1,7 @@
 # Core dependencies
 requests>=2.25.0
 markdown>=3.3.0
+pillow>=10.0.0
 
 # GUI framework (tkinter comes with Python, but some systems may need it)
 # tkinter  # Uncomment if tkinter is not installed by default

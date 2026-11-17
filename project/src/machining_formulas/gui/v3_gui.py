@@ -8,38 +8,66 @@ Bu modül Tkinter tabanlı V3 arayüzünü sağlar.
 
 # -*- coding : utf-8 -*-
 # Autor: Hakan KILIÇASLAN 2025
-# flake8: noqa
+# Uzun Türkçe LLM istemleri bilinçli olarak tek satırda tutuluyor.
+# flake8: noqa: E501
 
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
+import sys
+import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, scrolledtext
 from tkinter import ttk
-from typing import Any, Dict, List, Optional
-from PIL import Image, ImageTk
+from typing import Any, Callable, Dict, List, Optional
+try:
+    from PIL import Image, ImageTk
+except ImportError:  # Pillow opsiyonel: yoksa başlık görselleri metin fallback'ine düşer
+    Image = None  # type: ignore[assignment]
+    ImageTk = None  # type: ignore[assignment]
 
-from machining_formulas.assets import asset_path
+from machining_formulas.assets import asset_path, settings_path
 from machining_formulas.core.engineering_calculator import EngineeringCalculator
 from machining_formulas.gui.advanced_calculator import AdvancedCalculator
 from machining_formulas.gui.execute_mode import ExecuteModeMixin
-from machining_formulas.llm.ollama_utils import build_calculator_tools_definition, normalize_chat_url
+from machining_formulas.llm.ollama_utils import (
+    OLLAMA_CHAT_TIMEOUT,
+    build_calculator_tools_definition,
+    normalize_chat_url,
+)
 from machining_formulas.llm.ollama_utils_v2 import (
     get_available_models,
     single_chat_request,
     test_connection,
 )
 from machining_formulas.workspace.workspace_buffer import WorkspaceBuffer
-from machining_formulas.workspace.workspace_editor import WorkspaceEditor
+from machining_formulas.workspace.workspace_editor import (
+    MODE_INSERT,
+    ModelRequest,
+    WorkspaceEditor,
+    format_answer_block,
+)
 
 
 DEFAULT_WINDOW_SIZE: tuple[int, int] = (1400, 900)
 SUPPORTED_PROMPT_ATTACHMENT_EXTENSIONS: set[str] = {".txt", ".md", ".py", ".c", ".cpp"}
 
+logger = logging.getLogger(__name__)
+
 # Global instance
 ec = EngineeringCalculator()
+
+
+def parse_user_number(raw: Any, label: str) -> float:
+    """Parse a user-entered number and raise a Turkish ValueError when invalid."""
+    try:
+        return float(str(raw).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"'{label}' geçerli bir sayı olmalıdır.") from exc
 
 
 class V3Calculator(ExecuteModeMixin):
@@ -70,6 +98,7 @@ class V3Calculator(ExecuteModeMixin):
         settings = self._load_settings()
         self.current_model_url = settings.get("ollama_url", "http://localhost:11434")
         self.current_model_name = settings.get("model_name", "")
+        self.current_api_key = settings.get("api_key", "")
         self.ollama_models: List[str] = []
 
         # Cache frequently used data for performance
@@ -257,6 +286,19 @@ class V3Calculator(ExecuteModeMixin):
             side="right", padx=(5, 0)
         )
 
+        key_frame = ttk.Frame(model_frame, style="Calc.TFrame")
+        key_frame.pack(fill="x", padx=10, pady=6)
+
+        ttk.Label(key_frame, text="API Key:", width=8).pack(side="left")
+        self.api_key_entry = ttk.Entry(key_frame, width=30, show="*")
+        self.api_key_entry.pack(side="left", fill="x", expand=True, padx=(5, 0))
+        self.api_key_entry.insert(0, self.current_api_key)
+        ttk.Label(
+            key_frame,
+            text="(boşsa MACHINING_FORMULAS_API_KEY / STRATA_API_KEY)",
+            font=("TkDefaultFont", 9),
+        ).pack(side="right", padx=(5, 0))
+
         model_frame_inner = ttk.Frame(model_frame, style="Calc.TFrame")
         model_frame_inner.pack(fill="x", padx=10, pady=6)
 
@@ -415,7 +457,7 @@ class V3Calculator(ExecuteModeMixin):
         canvas.pack(fill="x", expand=False)
 
         image_path = self._assets_image_path(image_filename)
-        if image_path.exists():
+        if Image is not None and ImageTk is not None and image_path.exists():
             try:
                 pil_img = Image.open(image_path)
                 # Resize image to fit height=120 while keeping aspect ratio
@@ -503,7 +545,7 @@ class V3Calculator(ExecuteModeMixin):
                         self._active_popup_photo = photo_large
                         
                     except Exception as ex:
-                        print(f"Popup olusturma hatasi: {ex}")
+                        logger.warning("Açılır önizleme oluşturulamadı: %s", ex)
 
                 def on_leave(event):
                     if hasattr(self, "_active_hover_popup") and self._active_hover_popup:
@@ -521,7 +563,7 @@ class V3Calculator(ExecuteModeMixin):
                 setattr(canvas, "on_leave", on_leave)
                 return
             except Exception as e:
-                print(f"Error loading image {image_filename} with Pillow: {e}")
+                logger.warning("Başlık görseli yüklenemedi (%s): %s", image_filename, e)
 
         canvas.create_rectangle(0, 0, 5000, 120, fill="#f5f7fb", outline="")
         canvas.create_text(
@@ -667,18 +709,11 @@ class V3Calculator(ExecuteModeMixin):
                 if val_str == "":
                     raise ValueError(f"{name} için değer girin")
 
-                val = float(val_str)
+                val = parse_user_number(val_str, name)
                 args.append(val)
                 params_dict[name] = val
 
-            if state["category"] == "turning":
-                result_dict = ec.calculate_turning(method_key, *args)
-            elif state["category"] == "milling":
-                result_dict = ec.calculate_milling(method_key, *args)
-            elif state["category"] == "drilling":
-                result_dict = ec.calculate_drilling(method_key, *args)
-            else:
-                raise ValueError(f"Desteklenmeyen kategori: {state['category']}")
+            result_dict = ec.calculate(state["category"], method_key, *args)
 
             value = float(result_dict["value"])
             unit = str(result_dict.get("units", ""))
@@ -719,7 +754,7 @@ class V3Calculator(ExecuteModeMixin):
         self.workspace_editor = WorkspaceEditor(
             workspace_frame,
             self.workspace_buffer,
-            on_model_suggestion=self._handle_model_suggestion,
+            on_model_request=self._handle_model_request,
             on_content_change=self._on_workspace_change,
             tooltips=self.tooltips,
         )
@@ -727,7 +762,6 @@ class V3Calculator(ExecuteModeMixin):
 
     def _create_menu_bar(self):
         """Create menu bar."""
-        import sys
         is_mac = sys.platform == "darwin"
         mod_text = "Cmd+" if is_mac else "Ctrl+"
 
@@ -760,7 +794,6 @@ class V3Calculator(ExecuteModeMixin):
 
     def _setup_keyboard_shortcuts(self):
         """Configure macOS-prioritized, cross-platform keyboard shortcuts for menus and tabs."""
-        import sys
         is_mac = sys.platform == "darwin"
 
         def _bind(key, callback, is_shift=False):
@@ -809,7 +842,6 @@ class V3Calculator(ExecuteModeMixin):
 
     def _show_shortcuts_help(self):
         """Display a comprehensive help dialog for keyboard shortcuts."""
-        import sys
         mod = "Cmd" if sys.platform == "darwin" else "Ctrl"
 
         help_text = (
@@ -919,21 +951,34 @@ class V3Calculator(ExecuteModeMixin):
         """Calculate mass."""
         try:
             shape_key = self.current_shape_key
-            density = float(self.mass_density.get())
+            density = parse_user_number(self.mass_density.get(), "Yoğunluk")
 
             param_names = ec.get_shape_parameters(shape_key)
             param_values = []
+            params_dict: Dict[str, float] = {}
 
             for param_name in param_names:
-                if param_name in self.mass_param_widgets:
-                    param_values.append(float(self.mass_param_widgets[param_name].get()))
-                else:
-                    raise ValueError(f"Parameter {param_name} not found")
+                entry = self.mass_param_widgets.get(param_name)
+                if entry is None:
+                    display = ec.PARAM_TURKISH_NAMES.get(param_name, param_name)
+                    raise ValueError(f"'{display}' alanı bulunamadı.")
+                value = parse_user_number(entry.get(), param_name)
+                param_values.append(value)
+                params_dict[param_name] = value
 
             if shape_key != "sphere" and "length" in self.mass_param_widgets:
-                param_values.append(float(self.mass_param_widgets["length"].get()))
+                length = parse_user_number(self.mass_param_widgets["length"].get(), "length")
+                param_values.append(length)
+                params_dict["length"] = length
 
             result = ec.calculate_material_mass(shape_key, density, *param_values)
+            self.mass_last_result = {
+                "value": result,
+                "unit": "g",
+                "shape": shape_key,
+                "density": density,
+                "params": params_dict,
+            }
             self.mass_result.config(text=f"Sonuç: {result:.2f} g")
 
         except ValueError as e:
@@ -942,156 +987,200 @@ class V3Calculator(ExecuteModeMixin):
             messagebox.showerror("Hata", f"Hesaplama hatası: {str(e)}")
 
     def _inject_mass(self):
-        """Inject mass calculation into workspace."""
+        """Inject the last mass calculation into the workspace."""
+        last = getattr(self, "mass_last_result", None)
+        if not last:
+            messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
+            return
+
         try:
-            if not hasattr(self, "mass_result") or not self.mass_result.cget("text"):
-                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
-                return
-
-            result_text = self.mass_result.cget("text")
-            if not result_text or "Sonuç:" not in result_text:
-                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
-                return
-
-            try:
-                result_value = float(result_text.split(":")[1].strip().split()[0])
-            except (IndexError, ValueError):
-                messagebox.showerror("Hata", "Lütfen önce hesaplama yapın.")
-                return
-
-            shape = self.mass_shape.get()
-            density = float(self.mass_density.get())
-
-            params = {}
-            for param_name, entry in self.mass_param_widgets.items():
-                params[param_name] = float(entry.get())
-
             self.workspace_editor.insert_calculation_result(
                 "Malzeme Hesaplamaları",
                 "Kütle Hesabı",
-                {"shape": shape, "density": density, **params},
-                result_value,
-                "g",
+                {"shape": last["shape"], "density": last["density"], **last["params"]},
+                last["value"],
+                last["unit"],
             )
+        except Exception as exc:
+            logger.error("Kütle sonucu çalışma alanına aktarılamadı", exc_info=exc)
+            messagebox.showerror("Hata", f"Sonuç çalışma alanına aktarılamadı: {exc}")
 
-        except Exception as e:
-            messagebox.showerror("Hata", f"Lütfen önce hesaplama yapın: {str(e)}")
-
-    def _handle_model_suggestion(self, context: str):
-        """Handle model suggestion request."""
+    def _handle_model_request(self, request: ModelRequest) -> None:
+        """Route an editor request to a calculation answer or a text edit."""
         if not self.current_model_name or not self.current_model_url:
             messagebox.showwarning("Uyarı", "Lütfen önce model URL'sini ve model seçin.")
+            self.workspace_editor.finish_request("Model seçilmedi")
             return
 
-        # Eğer metin bir hesap sorusu gibi görünüyorsa: tools ile yanıtla
-        if self._should_use_tools_for_text(context):
-            try:
-                self.update_status_bar("Hesaplama (tool) yanıtı hazırlanıyor...")
+        question = (request.question or "").strip()
+        source_text = (request.source_text or "").strip()
 
-                if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
-                    self._tool_assistant = AdvancedCalculator()
+        if not question and not source_text:
+            self.workspace_editor.finish_request("Boş istek")
+            return
 
-                chat_url = normalize_chat_url(self.current_model_url)
-                tools_def = build_calculator_tools_definition(ec)
+        if question:
+            self._answer_workspace_question(question, source_text, request)
+        else:
+            self._edit_workspace_text(source_text, request)
 
-                system_prompt = (
-                    "Sen uzman bir talaşlı imalat hesap asistanısın. "
-                    "DİKKAT: Sayısal hesap veya kütle/hacim hesabı gereken durumlarda KESİNLİKLE araçları (tools) kullanmalısın! "
-                    "Eğer sayısal veri varsa hesaplamayı sen YAPMA, sadece aracı çağır. Kendi kendine sayısal tahmin veya yuvarlama yapma, araçtan dönen hassas değerleri referans al.\n\n"
-                    "Yanıtını her zaman son derece profesyonel, temiz bir mühendislik raporu formatında sun. "
-                    "Eğer bir hesaplama yapıldıysa, aşağıdaki şablonu tam olarak kullanarak raporla:\n\n"
-                    "📊 MÜHENDİSLİK HESAPLAMA RAPORU\n"
-                    "==================================\n"
-                    "- **İşlem Türü**: [Buraya hesaplama türünü yazın, örn: Malzeme Kütle Hesabı]\n"
-                    "- **Kullanılan Parametreler**:\n"
-                    "  * [Parametre 1]: [Değer] [Birim]\n"
-                    "  * [Parametre 2]: [Değer] [Birim]\n"
-                    "- **Hesaplanan Hassas Değer**: [Araçtan gelen tam sayısal sonuç] [Birim]\n"
-                    "- **Mühendislik Analizi**: [Hesaplama sonucunun kısa, teknik ve net bir açıklaması]\n"
-                    "=================================="
-                )
+    def _answer_workspace_question(
+        self,
+        question: str,
+        source_text: str,
+        request: ModelRequest,
+    ) -> None:
+        """Answer a question typed in the editor's question bar."""
+        self.update_status_bar("Soru yanıtlanıyor...")
 
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context},
-                ]
+        if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
+            self._tool_assistant = AdvancedCalculator()
 
-                assistant_msg, _updated = self._tool_assistant.chat_with_tools(
-                    chat_url,
-                    self.current_model_name,
-                    messages,
-                    tools_def,
-                    timeout=60,
-                )
+        chat_url = normalize_chat_url(self.current_model_url)
+        tools_def = build_calculator_tools_definition(ec)
+        model_name = self.current_model_name
+        api_key = self._api_key_value()
 
-                answer = str(assistant_msg.get("content", "")).strip() or "(boş yanıt)"
+        system_prompt = (
+            "Sen uzman bir talaşlı imalat hesap asistanısın. "
+            "DİKKAT: Sayısal hesap veya kütle/hacim hesabı gereken durumlarda KESİNLİKLE araçları (tools) kullanmalısın! "
+            "Eğer sayısal veri varsa hesaplamayı sen YAPMA, sadece aracı çağır. Kendi kendine sayısal tahmin veya yuvarlama yapma, araçtan dönen hassas değerleri referans al.\n\n"
+            "Yanıtını her zaman son derece profesyonel, temiz bir mühendislik raporu formatında sun. "
+            "Eğer bir hesaplama yapıldıysa, aşağıdaki şablonu tam olarak kullanarak raporla:\n\n"
+            "📊 MÜHENDİSLİK HESAPLAMA RAPORU\n"
+            "==================================\n"
+            "- **İşlem Türü**: [Buraya hesaplama türünü yazın, örn: Malzeme Kütle Hesabı]\n"
+            "- **Kullanılan Parametreler**:\n"
+            "  * [Parametre 1]: [Değer] [Birim]\n"
+            "  * [Parametre 2]: [Değer] [Birim]\n"
+            "- **Hesaplanan Hassas Değer**: [Araçtan gelen tam sayısal sonuç] [Birim]\n"
+            "- **Mühendislik Analizi**: [Hesaplama sonucunun kısa, teknik ve net bir açıklaması]\n"
+            "=================================="
+        )
 
-                # Bazı modeller tools varken bile doğrudan (ve bazen yanlış birimle) yanıt verebiliyor.
-                # Bu durumda sık sorulan kalıplar için yerel/araç tabanlı fallback uygula.
-                fallback = self._try_local_tool_fallback(context, messages, answer)
-                if fallback:
-                    answer = fallback
+        # Belgenin tümü "Soru" olarak gönderilmez; yalnızca soru ve (varsa) seçim.
+        user_content = question
+        if source_text:
+            user_content = f"{question}\n\nBağlam (seçili metin):\n{source_text}"
 
-                # Workspace'e ekle (append şeklinde)
-                current_content = self.workspace_editor.get_current_content()
-                suffix = ("\n\n" if current_content.strip() else "") + f"Soru: {context}\nYanıt: {answer}\n"
-                self.workspace_buffer.suggest_edit(len(current_content), len(current_content), suffix)
-                self.workspace_editor._show_suggestions()
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
 
-                self.update_status_bar("Tool yanıtı eklendi")
-                return
-
-            except Exception as e:
-                messagebox.showerror("Hata", f"Tool yanıtı alınamadı: {str(e)}")
-                self.update_status_bar("Tool yanıtı başarısız")
-                return
-
-        # Aksi halde: mevcut davranış (metni iyileştir)
-        try:
-            self.update_status_bar("Model önerisi (tool destekli) isteniyor...")
-
-            if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
-                self._tool_assistant = AdvancedCalculator()
-
-            chat_url = normalize_chat_url(self.current_model_url)
-            tools_def = build_calculator_tools_definition(ec)
-
-            prompt = (
-                "Aşağıdaki çalışma alanı metnini düzenle, teknik olarak daha okunabilir ve yapılandırılmış hale getir. "
-                "Eğer metinde ham hesaplama verileri, peş peşe eklenmiş sonuçlar veya düzensiz notlar varsa, "
-                "bunları uyumlu bir mühendislik raporu/notu formatında toparla.\n\n"
-                "Metni düzenlerken, metinde geçen hesaplamaları (kesme hızı, kütle vb.) tespit et ve bu değerleri doğrulamak için MUTLAKA araçları (tools) çağır. Eğer metindeki değer hatalıysa, araçtan dönen doğru sonucu kullanarak metni düzelt.\n\n"
-                "ÇOK ÖNEMLİ KURALLAR:\n"
-                "1. SADECE düzenlenmiş metni döndür. Kod bloğu (```) bile kullanma, doğrudan metni yaz.\n"
-                "2. 'İşte metnin düzenlenmiş hali', 'Değişikliklerin Gerekçesi', 'Açıklama' gibi sohbet, giriş ve çıkış cümleleri KESİNLİKLE KULLANMA.\n"
-                "3. Kendi yorumunu veya fazladan açıklamaları metne katma, sadece var olan bilgiyi şıklaştır.\n\n"
-                "Düzenlenecek Metin:\n"
-                f"{context}"
-            )
-
-            messages = [
-                {"role": "user", "content": prompt},
-            ]
-
+        def work() -> str:
             assistant_msg, _updated = self._tool_assistant.chat_with_tools(
                 chat_url,
-                self.current_model_name,
+                model_name,
                 messages,
                 tools_def,
-                timeout=120,
+                timeout=OLLAMA_CHAT_TIMEOUT,
+                api_key=api_key,
+            )
+            answer = str(assistant_msg.get("content", "")).strip() or "(boş yanıt)"
+            # Bazı modeller tools varken bile doğrudan (ve bazen yanlış birimle) yanıt verebiliyor.
+            # Bu durumda sık sorulan kalıplar için yerel/araç tabanlı fallback uygula.
+            fallback = self._try_local_tool_fallback(question, messages, answer)
+            return fallback or answer
+
+        def apply(answer: str) -> None:
+            block = format_answer_block(question, answer)
+            if not block:
+                self.workspace_editor.finish_request("Modelden boş yanıt geldi")
+                return
+            self._add_workspace_suggestion(block, request)
+            self.update_status_bar("Yanıt incelemeye hazır")
+
+        def fail(exc: Exception) -> None:
+            logger.error("Soru yanıtlanamadı", exc_info=exc)
+            messagebox.showerror("Hata", f"Soru yanıtlanamadı: {exc}")
+            self.update_status_bar("Soru yanıtlanamadı")
+            self.workspace_editor.finish_request("Soru yanıtlanamadı")
+
+        self._run_background(work, apply, fail)
+
+    def _edit_workspace_text(self, source_text: str, request: ModelRequest) -> None:
+        """Ask the model to rewrite the selection (or the whole document)."""
+        self.update_status_bar("Düzenleme önerisi (tool destekli) isteniyor...")
+
+        if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
+            self._tool_assistant = AdvancedCalculator()
+
+        chat_url = normalize_chat_url(self.current_model_url)
+        tools_def = build_calculator_tools_definition(ec)
+        model_name = self.current_model_name
+        api_key = self._api_key_value()
+
+        prompt = (
+            "Aşağıdaki çalışma alanı metnini düzenle, teknik olarak daha okunabilir ve yapılandırılmış hale getir. "
+            "Eğer metinde ham hesaplama verileri, peş peşe eklenmiş sonuçlar veya düzensiz notlar varsa, "
+            "bunları uyumlu bir mühendislik raporu/notu formatında toparla.\n\n"
+            "Metni düzenlerken, metinde geçen hesaplamaları (kesme hızı, kütle vb.) tespit et ve bu değerleri doğrulamak için MUTLAKA araçları (tools) çağır. Eğer metindeki değer hatalıysa, araçtan dönen doğru sonucu kullanarak metni düzelt.\n\n"
+            "ÇOK ÖNEMLİ KURALLAR:\n"
+            "1. SADECE düzenlenmiş metni döndür. Kod bloğu (```) bile kullanma, doğrudan metni yaz.\n"
+            "2. 'İşte metnin düzenlenmiş hali', 'Değişikliklerin Gerekçesi', 'Açıklama' gibi sohbet, giriş ve çıkış cümleleri KESİNLİKLE KULLANMA.\n"
+            "3. Kendi yorumunu veya fazladan açıklamaları metne katma, sadece var olan bilgiyi şıklaştır.\n\n"
+            "Düzenlenecek Metin:\n"
+            f"{source_text}"
+        )
+
+        messages = [
+            {"role": "user", "content": prompt},
+        ]
+
+        def work() -> str:
+            assistant_msg, _updated = self._tool_assistant.chat_with_tools(
+                chat_url,
+                model_name,
+                messages,
+                tools_def,
+                timeout=OLLAMA_CHAT_TIMEOUT,
+                api_key=api_key,
+            )
+            return str(assistant_msg.get("content", "")).strip()
+
+        def apply(response: str) -> None:
+            if not response:
+                self.workspace_editor.finish_request("Modelden boş yanıt geldi")
+                return
+            if response.strip() == source_text.strip():
+                self.workspace_editor.finish_request("Öneri mevcut metinle aynı")
+                return
+            self._add_workspace_suggestion(response, request, replacement=source_text)
+            self.update_status_bar("Düzenleme önerisi incelemeye hazır")
+
+        def fail(exc: Exception) -> None:
+            logger.error("Düzenleme önerisi alınamadı", exc_info=exc)
+            messagebox.showerror("Hata", f"Düzenleme önerisi alınamadı: {exc}")
+            self.update_status_bar("Düzenleme başarısız")
+            self.workspace_editor.finish_request("Düzenleme başarısız")
+
+        self._run_background(work, apply, fail)
+
+    def _add_workspace_suggestion(
+        self,
+        text: str,
+        request: ModelRequest,
+        replacement: Optional[str] = None,
+    ) -> None:
+        """Create a pending suggestion and open it in the review panel."""
+        content = self.workspace_editor.get_current_content()
+
+        if replacement is not None:
+            start = max(0, min(request.offset, len(content)))
+            end = min(start + len(replacement), len(content))
+            edit = self.workspace_buffer.suggest_edit(start, end, text)
+        elif request.mode == MODE_INSERT:
+            offset = max(0, min(request.offset, len(content)))
+            edit = self.workspace_buffer.suggest_edit(offset, offset, text)
+        else:
+            prefix = "\n\n" if content.strip() else ""
+            edit = self.workspace_buffer.suggest_edit(
+                len(content), len(content), prefix + text, at_end=True
             )
 
-            response = str(assistant_msg.get("content", "")).strip() or context
-
-            current_content = self.workspace_editor.get_current_content()
-            self.workspace_buffer.suggest_edit(0, len(current_content), response)
-
-            self.workspace_editor._show_suggestions()
-            self.update_status_bar("Model önerisi eklendi")
-
-        except Exception as e:
-            messagebox.showerror("Hata", f"Model önerisi alınamadı: {str(e)}")
-            self.update_status_bar("Model önerisi başarısız")
+        self.workspace_editor.open_review(edit.id)
+        self.workspace_editor.finish_request("Öneri hazır — inceleme panelinde")
 
     def _try_local_tool_fallback(
         self,
@@ -1123,7 +1212,7 @@ class V3Calculator(ExecuteModeMixin):
                     if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
                         self._tool_assistant = AdvancedCalculator()
 
-                    tool_result = self._tool_assistant._execute_tool(
+                    tool_result = self._tool_assistant.execute_tool(
                         "calculate_turning_cutting_speed",
                         {"Dm": dm, "n": n},
                         messages_history,
@@ -1163,60 +1252,25 @@ class V3Calculator(ExecuteModeMixin):
                 continue
         return None
 
-    def _should_use_tools_for_text(self, text: str) -> bool:
-        """Heuristic: if it looks like a machining or mass calculation request, prefer tool-calling."""
-        t = (text or "").lower()
-        
-        # Soru eki, soru işareti veya hesaplama komut fiilleri var mı kontrol et
-        is_request = (
-            "?" in t 
-            or any(cmd in t for cmd in ("hesapla", "bul", "nedir", "kaç", "calculate", "compute", "find"))
-        )
-        if not is_request:
-            return False
-            
-        keywords = (
-            "kesme hızı",
-            "cutting speed",
-            "devir",
-            "rpm",
-            "çap",
-            "mm",
-            "ilerleme",
-            "fz",
-            "table feed",
-            "feed per tooth",
-            "kütle",
-            "kütlesi",
-            "mass",
-            "ağırlık",
-            "ağırlığı",
-            "weight",
-            "yoğunluk",
-            "density",
-            "hacim",
-            "volume",
-        )
-        return any(k in t for k in keywords)
-
     def _analyze_workspace(self):
         """Analyze entire workspace with model."""
         if not self.current_model_name or not self.current_model_url:
             messagebox.showwarning("Uyarı", "Lütfen önce model URL'sini ve model seçin.")
             return
 
-        try:
-            self.update_status_bar("Çalışma alanı (tool destekli) analiz ediliyor...")
+        self.update_status_bar("Çalışma alanı (tool destekli) analiz ediliyor...")
 
-            if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
-                self._tool_assistant = AdvancedCalculator()
+        if not hasattr(self, "_tool_assistant") or self._tool_assistant is None:
+            self._tool_assistant = AdvancedCalculator()
 
-            chat_url = normalize_chat_url(self.current_model_url)
-            tools_def = build_calculator_tools_definition(ec)
+        chat_url = normalize_chat_url(self.current_model_url)
+        tools_def = build_calculator_tools_definition(ec)
+        model_name = self.current_model_name
+        api_key = self._api_key_value()
 
-            content = self.workspace_editor.get_current_content()
-            
-            system_prompt = (
+        content = self.workspace_editor.get_current_content()
+
+        system_prompt = (
                 "Sen uzman bir talaşlı imalat hesap analistisin. Görevin, sana verilen çalışma alanındaki tüm hesaplamaları tespit etmek, "
                 "bu hesaplamaları doğrulamak için paralel olarak araçları (tools) çağırmak ve bir analiz raporu oluşturmaktır.\n\n"
                 "ANALİZ VE YARATICILIK KURALLARI:\n"
@@ -1233,35 +1287,41 @@ class V3Calculator(ExecuteModeMixin):
                 "   - '💡 Yeni Araç Önerisi' (Mevcut listemizde olmayıp sisteme eklenmesini önerdiğin araçlar için)\n"
                 "   - '📝 Taslak/Referans' (Teorik olarak varsaydığın veya simüle ettiğin değerler için)"
             )
-            
-            user_prompt = f"Çalışma alanı içeriği:\n\n{content}"
 
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
+        user_prompt = f"Çalışma alanı içeriği:\n\n{content}"
 
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        def work() -> str:
             assistant_msg, _updated = self._tool_assistant.chat_with_tools(
                 chat_url,
-                self.current_model_name,
+                model_name,
                 messages,
                 tools_def,
-                timeout=120,
+                timeout=OLLAMA_CHAT_TIMEOUT,
+                api_key=api_key,
+            )
+            return (
+                str(assistant_msg.get("content", "")).strip()
+                or "Analiz sonucunda modelden geçerli bir yanıt alınamadı."
             )
 
-            response = str(assistant_msg.get("content", "")).strip() or "Analiz sonucunda modelden geçerli bir yanıt alınamadı."
-
+        def apply(response: str) -> None:
             self._show_analysis_result(response)
             self.update_status_bar("Analiz tamamlandı")
 
-        except Exception as e:
-            messagebox.showerror("Hata", f"Analiz sırasında hata: {str(e)}")
+        def fail(exc: Exception) -> None:
+            logger.error("Çalışma alanı analizi başarısız", exc_info=exc)
+            messagebox.showerror("Hata", f"Analiz sırasında hata: {exc}")
             self.update_status_bar("Analiz başarısız")
+
+        self._run_background(work, apply, fail)
 
     def _show_analysis_result(self, result_text: str):
         """Show analysis result in a beautiful scrollable dialog."""
-        from tkinter import scrolledtext
-
         # Create Toplevel window
         dialog = tk.Toplevel(self.root)
         dialog.title("Çalışma Alanı Analizi ve Öneriler")
@@ -1362,31 +1422,45 @@ class V3Calculator(ExecuteModeMixin):
         def do_refresh():
             """Re-fetch the workspace analysis and refresh the UI content."""
             # Set loading state
+            refresh_btn.configure(state=tk.DISABLED)
             text_area.configure(state=tk.NORMAL)
             text_area.delete("1.0", tk.END)
             text_area.insert(tk.END, "🔄 Çalışma alanı analiz ediliyor... Lütfen bekleyin.\n\n", "bold")
             text_area.configure(state=tk.DISABLED)
             dialog.update()
 
-            try:
-                self.update_status_bar("Çalışma alanı yeniden analiz ediliyor...")
-                content = self.workspace_editor.get_current_content()
-                context = f"Bu mühendislik çalışma alanını analiz et ve öneriler sun: {content}"
+            self.update_status_bar("Çalışma alanı yeniden analiz ediliyor...")
+            content = self.workspace_editor.get_current_content()
+            context = f"Bu mühendislik çalışma alanını analiz et ve öneriler sun: {content}"
+            model_url = self.current_model_url
+            model_name = self.current_model_name
+            api_key = self._api_key_value()
 
-                new_response = single_chat_request(
-                    self.current_model_url,
-                    self.current_model_name,
-                    context,
-                    timeout=120,
+            def work() -> str:
+                return str(
+                    single_chat_request(
+                        model_url,
+                        model_name,
+                        context,
+                        timeout=OLLAMA_CHAT_TIMEOUT,
+                        api_key=api_key,
+                    )
                 )
 
-                self._populate_analysis_text(text_area, str(new_response))
+            def apply(new_response: str) -> None:
+                refresh_btn.configure(state=tk.NORMAL)
+                self._populate_analysis_text(text_area, new_response)
                 self.update_status_bar("Yeniden analiz tamamlandı")
-            except Exception as ex:
+
+            def fail(exc: Exception) -> None:
+                refresh_btn.configure(state=tk.NORMAL)
+                logger.error("Yeniden analiz başarısız", exc_info=exc)
                 text_area.configure(state=tk.NORMAL)
-                text_area.insert(tk.END, f"\n❌ Yeniden analiz sırasında hata oluştu:\n{str(ex)}", "bold")
+                text_area.insert(tk.END, f"\n❌ Yeniden analiz sırasında hata oluştu:\n{exc}", "bold")
                 text_area.configure(state=tk.DISABLED)
                 self.update_status_bar("Yeniden analiz başarısız")
+
+            self._run_background(work, apply, fail)
 
         # Action Button Frame
         btn_frame = tk.Frame(main_frame, bg="#f8f9fa")
@@ -1603,64 +1677,104 @@ class V3Calculator(ExecuteModeMixin):
                 messagebox.showerror("Hata", f"Dışa aktarma hatası: {str(e)}")
 
     def refresh_model_list(self):
-        """Refresh available models."""
-        try:
-            model_url = self.model_url_entry.get().strip()
-            self.current_model_url = model_url
+        """Refresh available models off the Tk thread."""
+        model_url = self.model_url_entry.get().strip()
+        self.current_model_url = model_url
+        api_key = self._api_key_value()
 
-            self.ollama_models = get_available_models(model_url)
-
-            if self.ollama_models:
-                self.model_selection_combo["values"] = self.ollama_models
-                if not self.current_model_name or self.current_model_name not in self.ollama_models:
-                    self.model_selection_combo.set(self.ollama_models[0])
-                    self.current_model_name = self.ollama_models[0]
+        def apply(models: List[str]) -> None:
+            self.ollama_models = models
+            if models:
+                self.model_selection_combo.configure(state="readonly")
+                self.model_selection_combo["values"] = models
+                if not self.current_model_name or self.current_model_name not in models:
+                    self.model_selection_combo.set(models[0])
+                    self.current_model_name = models[0]
                 else:
                     self.model_selection_combo.set(self.current_model_name)
-                self.update_status_bar(f"Modeller yenilendi: {len(self.ollama_models)} model bulundu")
+                self.update_status_bar(f"Modeller yenilendi: {len(models)} model bulundu")
                 self._save_settings()
             else:
-                # Hata/bağlantı yok durumunda fallback modeller atanmalıdır
-                fallback_models = ["llama3", "gemma2", "mistral"]
-                self.model_selection_combo["values"] = fallback_models
-                self.model_selection_combo.set(fallback_models[0])
-                self.current_model_name = fallback_models[0]
-                self.update_status_bar("Model bağlantısı kurulamadı; varsayılan model listesi (fallback) yüklendi.")
+                self._clear_model_list(
+                    "Model sunucusundan model listesi alınamadı. URL, API anahtarı ve sunucu durumunu kontrol edin."
+                )
 
-        except Exception as e:
-            fallback_models = ["llama3", "gemma2", "mistral"]
-            self.model_selection_combo["values"] = fallback_models
-            self.model_selection_combo.set(fallback_models[0])
-            self.current_model_name = fallback_models[0]
-            messagebox.showerror("Hata", f"Modeller alınırken hata oluştu: {str(e)}")
-            self.update_status_bar("Model yenileme başarısız, varsayılan liste atandı")
+        def fail(exc: Exception) -> None:
+            logger.error("Model listesi yenilenemedi", exc_info=exc)
+            self._clear_model_list("Model yenileme başarısız; bağlantıyı kontrol edin.")
+
+        self.update_status_bar("Model listesi alınıyor...")
+        self._run_background(lambda: get_available_models(model_url, api_key), apply, fail)
+
+    def _clear_model_list(self, status_message: str) -> None:
+        """Reset the model selector instead of inventing fallback models."""
+        self.ollama_models = []
+        self.model_selection_combo["values"] = []
+        self.model_selection_combo.set("")
+        self.model_selection_combo.configure(state="disabled")
+        self.current_model_name = ""
+        self.update_status_bar(status_message)
 
     def test_model_connection(self):
-        """Test connection to model with detailed Turkish troubleshooting."""
-        try:
-            model_url = self.model_url_entry.get().strip()
-            if test_connection(model_url):
+        """Test the Ollama connection off the Tk thread."""
+        model_url = self.model_url_entry.get().strip()
+        api_key = self._api_key_value()
+
+        def apply(ok: bool) -> None:
+            if ok:
                 self.current_model_url = model_url
                 self._save_settings()
-                messagebox.showinfo("Bağlantı Başarılı", "Ollama sunucusuna bağlantı başarılı!")
+                messagebox.showinfo("Bağlantı Başarılı", "Model sunucusuna bağlantı başarılı!")
                 self.update_status_bar("Bağlantı başarılı")
             else:
                 messagebox.showerror(
                     "Bağlantı Başarısız",
-                    "Ollama sunucusuna bağlanılamadı!\n\n"
+                    "Model sunucusuna bağlanılamadı!\n\n"
                     "Lütfen şunları kontrol edin:\n"
-                    "1. Ollama sunucusunun çalıştığından emin olun (örneğin terminalde 'ollama serve' çalışıyor mu?).\n"
+                    "1. Sunucunun çalıştığından emin olun (Ollama için terminalde 'ollama serve' çalışıyor mu?).\n"
                     "2. Model URL adresinin doğru olduğunu doğrulayın (varsayılan: http://localhost:11434).\n"
-                    "3. Bilgisayarınızın internet/ağ bağlantısını ve güvenlik duvarı ayarlarını kontrol edin."
+                    "3. Bilgisayarınızın internet/ağ bağlantısını ve güvenlik duvarı ayarlarını kontrol edin.\n"
+                    "4. macOS kullanıyorsanız Sistem Ayarları > Gizlilik ve Güvenlik > Yerel Ağ iznini kontrol edin.\n"
+                    "5. Sunucu API anahtarı istiyorsa API Key alanını doldurun veya MACHINING_FORMULAS_API_KEY "
+                    "/ STRATA_API_KEY ortam değişkenini tanımlayın."
                 )
                 self.update_status_bar("Bağlantı başarısız")
-        except Exception as e:
-            messagebox.showerror("Hata", f"Bağlantı testi sırasında beklenmeyen hata: {str(e)}")
+
+        def fail(exc: Exception) -> None:
+            logger.error("Bağlantı testi başarısız", exc_info=exc)
+            messagebox.showerror("Hata", f"Bağlantı testi sırasında beklenmeyen hata: {exc}")
             self.update_status_bar("Bağlantı testi başarısız")
+
+        self.update_status_bar("Bağlantı test ediliyor...")
+        self._run_background(lambda: test_connection(model_url, api_key), apply, fail)
 
     def update_status_bar(self, message: str):
         """Update status bar message."""
         self.status_var.set(message)
+
+    def _run_background(
+        self,
+        work: Callable[[], Any],
+        on_success: Callable[[Any], None],
+        on_error: Callable[[Exception], None],
+    ) -> None:
+        """Run blocking network work off the Tk thread; apply results on it.
+
+        Tkinter widgets must only be touched from the main thread, so ``work``
+        must be side-effect free and the callbacks are dispatched via
+        ``root.after``.
+        """
+
+        def runner() -> None:
+            try:
+                result = work()
+            except Exception as exc:  # noqa: BLE001 - reported through on_error
+                # exc is cleared when the block exits, so bind it to the lambda.
+                self.root.after(0, lambda error=exc: on_error(error))
+                return
+            self.root.after(0, lambda: on_success(result))
+
+        threading.Thread(target=runner, daemon=True).start()
 
     def _handle_tab_navigation(self, event):
         """Handle Tab key navigation between widgets."""
@@ -1714,6 +1828,8 @@ class V3Calculator(ExecuteModeMixin):
 
         if hasattr(self, "model_url_entry"):
             widgets.append(self.model_url_entry)
+        if hasattr(self, "api_key_entry"):
+            widgets.append(self.api_key_entry)
         if hasattr(self, "model_selection_combo"):
             widgets.append(self.model_selection_combo)
 
@@ -1722,33 +1838,42 @@ class V3Calculator(ExecuteModeMixin):
 
         return widgets
 
+    def _api_key_value(self) -> str:
+        """Return the API key field content (main thread only)."""
+        if hasattr(self, "api_key_entry"):
+            return self.api_key_entry.get().strip()
+        return getattr(self, "current_api_key", "")
+
     def _load_settings(self) -> dict[str, str]:
-        """Load settings from JSON config file."""
-        import json
-        from machining_formulas.assets import asset_path
-        settings_file = asset_path("settings.json")
+        """Load settings from the per-user config file."""
+        settings_file = settings_path()
         try:
             if settings_file.exists():
                 with open(settings_file, "r", encoding="utf-8") as f:
                     return json.load(f)
-        except Exception as e:
-            print(f"Error loading settings: {e}")
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("Ayarlar okunamadı (%s): %s", settings_file, e)
         return {}
 
     def _save_settings(self):
-        """Save settings to JSON config file."""
-        import json
-        from machining_formulas.assets import asset_path
-        settings_file = asset_path("settings.json")
+        """Persist settings atomically in the per-user config directory."""
+        settings_file = settings_path()
         try:
+            settings_file.parent.mkdir(parents=True, exist_ok=True)
             data = {
                 "ollama_url": self.current_model_url,
                 "model_name": self.current_model_name,
+                "api_key": self._api_key_value(),
             }
-            with open(settings_file, "w", encoding="utf-8") as f:
+            tmp_file = settings_file.with_suffix(".json.tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
-        except Exception as e:
-            print(f"Error saving settings: {e}")
+            # Anahtar düz metin tutulduğu için dosya yalnızca sahibine okunur olsun.
+            os.chmod(tmp_file, 0o600)
+            os.replace(tmp_file, settings_file)
+        except OSError as e:
+            logger.warning("Ayarlar kaydedilemedi (%s): %s", settings_file, e)
+            self.update_status_bar("Ayarlar kaydedilemedi; ayrıntılar için loglara bakın.")
 
     def _on_model_selection_change(self, event=None):
         """Handle model combobox selection change."""
@@ -1791,6 +1916,7 @@ class V3Calculator(ExecuteModeMixin):
 
 def main() -> None:
     """Main entry point for V3 GUI."""
+    logging.basicConfig(level=logging.WARNING)
     try:
         root = tk.Tk()
 
@@ -1800,17 +1926,14 @@ def main() -> None:
             if p.exists():
                 with open(p, "r", encoding="utf-8") as f:
                     tooltips = json.load(f)
-        except Exception:
+        except (OSError, json.JSONDecodeError):
             tooltips = {}
 
         app = V3Calculator(root, tooltips)
         root.mainloop()
 
-    except Exception as e:
-        print(f"V3 GUI başlatma hatası: {e}")
-        import traceback
-
-        traceback.print_exc()
+    except Exception:
+        logger.exception("V3 GUI başlatma hatası")
 
 
 if __name__ == "__main__":

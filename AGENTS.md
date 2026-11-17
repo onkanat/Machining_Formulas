@@ -56,11 +56,13 @@
 ### LLM Integration
 - Tool names: `calculate_turning_{method}`, `calculate_milling_{method}`, `calculate_material_mass`
 - Arguments must match calculator parameter definitions exactly
-- Handle both `/v1/chat` and `/api/chat` Ollama endpoints
-- Timeout: 20s for HTTP requests
+- Handle OpenAI-compatible (`/v1/chat/completions`, `/v1/models`) and Ollama native (`/api/chat`, `/api/tags`) endpoints; the typed endpoint is tried first
+- Timeout: `OLLAMA_CHAT_TIMEOUT` (connect 10s / read 300s) — soğuk model yüklemesini kapsar; model listesi 15s, bağlantı testi 10s
+- Auth: build headers with `auth_headers(api_key)`; key comes from the GUI field, else `MACHINING_FORMULAS_API_KEY`, else `STRATA_API_KEY` (sent as `Authorization: Bearer`)
 
 ### Security
-- No API keys or secrets in code
+- No API keys or secrets in code; keys come from user input or environment only
+- Persisted settings (including the key) live in `~/.config/machining_formulas/settings.json` with mode `600`
 - `ExecuteModeMixin` capsulates eval functionality
 - Validate all user inputs before calculations
 
@@ -75,7 +77,7 @@
 - V3 GUI: `src/machining_formulas/gui/v3_gui.py`
 - Tool-calling (tests focus): `src/machining_formulas/gui/advanced_calculator.py`
 - Execute mode (eval safety): `src/machining_formulas/gui/execute_mode.py`
-- Workspace: `src/machining_formulas/workspace/workspace_buffer.py`, `workspace_editor.py`, `workspace_manager.py`
+- Workspace: `src/machining_formulas/workspace/workspace_buffer.py`, `workspace_editor.py`
 - Tool schemas + URL helpers: `src/machining_formulas/llm/ollama_utils.py`
 - V3 GUI Ollama helpers: `src/machining_formulas/llm/ollama_utils_v2.py`
 - Parameter handling: `src/machining_formulas/llm/material_utils.py`
