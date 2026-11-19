@@ -109,3 +109,49 @@ def test_prepare_arguments_missing_density_raises_error(calculator):
             messages,
         )
 
+
+def test_longest_material_alias_wins(calculator):
+    """En uzun alias eşleşmeli: 'çelik' içeren bir cümlede bile doğru malzeme seçilir."""
+    messages = [{"role": "user", "content": "alüminyum çubuk çap 20 mm boy 300 mm"}]
+    params = prepare_material_mass_arguments(
+        calculator,
+        {"shape_key": "circle", "radius": 10},
+        messages,
+    )
+    assert params.density == pytest.approx(
+        calculator.get_material_density("Alüminyum"), rel=1e-6
+    )
+
+
+def test_ambiguous_material_raises_error(calculator):
+    """Aynı uzunlukta iki farklı malzeme eşleşirse tahmin edilmemeli."""
+    messages = [{"role": "user", "content": "bakır veya çelik çubuk çap 20 mm boy 300 mm"}]
+    with pytest.raises(ValueError, match="Birden fazla malzeme eşleşti"):
+        prepare_material_mass_arguments(
+            calculator,
+            {"shape_key": "circle", "radius": 10},
+            messages,
+        )
+
+
+def test_boya_is_not_parsed_as_length(calculator):
+    """'boya 5' ifadesi uzunluk olarak yorumlanmamalı; eksik length hatası gelmeli."""
+    messages = [{"role": "user", "content": "çelik daire çap 20 mm boya 5 kat"}]
+    with pytest.raises(ValueError, match="'length'"):
+        prepare_material_mass_arguments(
+            calculator,
+            {"shape_key": "circle", "radius": 10},
+            messages,
+        )
+
+
+def test_length_is_inferred_from_boy_keyword(calculator):
+    """'100 mm boy' ifadesinden uzunluk çıkarılmalı."""
+    messages = [{"role": "user", "content": "çelik daire çap 20 mm, 300 mm boy"}]
+    params = prepare_material_mass_arguments(
+        calculator,
+        {"shape_key": "circle", "radius": 10},
+        messages,
+    )
+    assert params.length == pytest.approx(300.0)
+

@@ -5,7 +5,7 @@ from __future__ import annotations
 # Autor:Hakan KILIÇASLAN 2025
 
 import math
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 
 class EngineeringCalculator:
@@ -30,17 +30,17 @@ class EngineeringCalculator:
             * length,
             "kite": lambda diagonal1, diagonal2, length: (diagonal1 * diagonal2 / 2)
             * length,
-            "pentagon": lambda width, length: (5 / 4 * width**2 / math.tan(math.pi / 5))
+            "pentagon": lambda side, length: (5 / 4 * side**2 / math.tan(math.pi / 5))
             * length,
-            "hexagon": lambda width, length: (3 * math.sqrt(3) / 2 * width**2) * length,
-            "octagon": lambda width, length: (2 * (1 + math.sqrt(2)) * width**2)
+            "hexagon": lambda side, length: (3 * math.sqrt(3) / 2 * side**2) * length,
+            "octagon": lambda side, length: (2 * (1 + math.sqrt(2)) * side**2)
             * length,
-            "nonagon": lambda width, length: (
-                9 / 4 * width**2 * (1 / math.tan(math.pi / 9))
+            "nonagon": lambda side, length: (
+                9 / 4 * side**2 * (1 / math.tan(math.pi / 9))
             )
             * length,
-            "decagon": lambda width, length: (
-                5 / 2 * width**2 * (1 / math.tan(math.pi / 10))
+            "decagon": lambda side, length: (
+                5 / 2 * side**2 * (1 / math.tan(math.pi / 10))
             )
             * length,
             "tube": lambda outer_radius, inner_radius, length: (
@@ -50,6 +50,31 @@ class EngineeringCalculator:
             "sphere": lambda radius: (4 / 3)
             * math.pi
             * radius**3,  # Note: No length parameter for sphere
+        }
+        # Açık boyut metadata'sı: parametre adları ve sırası hacim lambda'sıyla
+        # birebir aynı olmalıdır. İmza yansıması (co_varnames) yerine burada
+        # tutulur; böylece araç şeması ve GUI alanları tek kaynaktan üretilir.
+        # "length" tüm şekillerde ortak olduğu için burada yer almaz.
+        # Düzgün çokgenlerde boyut "side" (kenar uzunluğu) olarak adlandırılır;
+        # formüller karşıdan karşıya genişliği değil kenarı kullanır.
+        self.shape_parameters: Dict[str, Tuple[str, ...]] = {
+            "triangle": ("width", "height"),
+            "circle": ("radius",),
+            "semi-circle": ("radius",),
+            "square": ("width",),
+            "rectangle": ("width", "height"),
+            "parallelogram": ("width", "height"),
+            "rhombus": ("diagonal1", "diagonal2"),
+            "trapezoid": ("width1", "width2", "height"),
+            "trapezium": ("width1", "width2", "height"),
+            "kite": ("diagonal1", "diagonal2"),
+            "pentagon": ("side",),
+            "hexagon": ("side",),
+            "octagon": ("side",),
+            "nonagon": ("side",),
+            "decagon": ("side",),
+            "tube": ("outer_radius", "inner_radius"),
+            "sphere": ("radius",),
         }
         # Malzeme yoğunlukları (g/cm^3)
         self.material_density: Dict[str, float] = {
@@ -271,13 +296,13 @@ class EngineeringCalculator:
             volume_cm3 = volume_mm3 / 1000.0
             return volume_cm3 * density_value
         except KeyError:
-            raise ValueError(f"Invalid shape: {shape}")
+            raise ValueError(f"Geçersiz şekil: {shape}")
         except TypeError as e:
-            raise ValueError(f"Incorrect arguments for shape {shape}: {str(e)}")
+            raise ValueError(f"'{shape}' şekli için parametreler hatalı: {str(e)}")
         except ValueError:
             raise
         except Exception as e:
-            raise ValueError(f"Calculation error for shape {shape}: {str(e)}")
+            raise ValueError(f"'{shape}' şekli hesaplanamadı: {str(e)}")
 
     def _definitions_for(self, category: str) -> Dict[str, Any]:
         return {
@@ -298,10 +323,10 @@ class EngineeringCalculator:
                 "units": calc_definition["units"]["result"],
             }
         except KeyError:
-            raise ValueError(f"Invalid {category} calculation: {definition}")
+            raise ValueError(f"Geçersiz {label} hesaplaması: {definition}")
         except TypeError as e:
             raise ValueError(
-                f"Incorrect arguments for {category} calculation {definition}: {str(e)}"
+                f"'{definition}' ({label}) hesaplaması için parametreler hatalı: {str(e)}"
             )
         except ZeroDivisionError as e:
             raise ValueError(f"{label} '{definition}' hesaplanamadı: sıfıra bölme.") from e
@@ -346,7 +371,7 @@ class EngineeringCalculator:
         try:
             return self.material_density[material]
         except KeyError:
-            raise ValueError(f"Unknown material: {material}")
+            raise ValueError(f"Bilinmeyen malzeme: {material}")
 
     def get_available_shapes(self) -> Dict[str, str]:
         """Map internal shape keys to Turkish display names."""
@@ -394,6 +419,7 @@ class EngineeringCalculator:
         "Dc": "Matkap Çapı",
         "radius": "Yarıçap",
         "width": "Genişlik",
+        "side": "Kenar Uzunluğu",
         "height": "Yükseklik",
         "outer_radius": "Dış Yarıçap",
         "inner_radius": "İç Yarıçap",
@@ -415,7 +441,7 @@ class EngineeringCalculator:
         }
 
         if calc_category_key not in definitions_map:
-            raise ValueError(f"Invalid calculation category key: {calc_category_key}")
+            raise ValueError(f"Geçersiz hesaplama kategori anahtarı: {calc_category_key}")
 
         category_definitions = definitions_map[calc_category_key]
 
@@ -442,14 +468,8 @@ class EngineeringCalculator:
         return param_details_list
 
     def get_shape_parameters(self, shape_key: str) -> List[str]:
-        """Return shape dimension parameter names (excluding length for extrusions)."""
-        if shape_key not in self.shape_definitions:
-            raise ValueError(f"Invalid shape key: {shape_key}")
+        """Return shape dimension parameter names (excluding the common length)."""
+        if shape_key not in self.shape_parameters:
+            raise ValueError(f"Geçersiz şekil anahtarı: {shape_key}")
 
-        func: Callable[..., float] = self.shape_definitions[shape_key]
-        param_names = list(func.__code__.co_varnames[: func.__code__.co_argcount])
-
-        if shape_key != "sphere" and "length" in param_names:
-            param_names.remove("length")
-
-        return param_names
+        return list(self.shape_parameters[shape_key])

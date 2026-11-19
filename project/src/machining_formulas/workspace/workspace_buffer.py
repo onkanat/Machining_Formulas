@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import difflib
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 def line_diff(old_text: str, new_text: str, context: int = 2) -> List[Tuple[str, str]]:
@@ -232,9 +235,15 @@ class WorkspaceBuffer:
         old_text = self.content[start:end]
 
         # Aynı öneri tekrar üretildiğinde (ör. model aynı yanıtı döndürdüğünde)
-        # listeye ikinci bir kopya eklemek yerine mevcut öneri döndürülür.
+        # listeye ikinci bir kopya eklemek yerine mevcut öneri döndürülür. Konum
+        # da karşılaştırılır: aynı metin belgenin farklı yerlerinde değişebilir.
         for existing in self.get_pending_suggestions():
-            if existing.old_text == old_text and existing.new_text == text:
+            if (
+                existing.old_text == old_text
+                and existing.new_text == text
+                and existing.position == start
+                and existing.at_end == at_end
+            ):
                 return existing
 
         edit = WorkspaceEdit(
@@ -370,25 +379,37 @@ class WorkspaceBuffer:
         }
 
     def import_session(self, data: Dict[str, Any]) -> bool:
+        """Replace the session state; leave it untouched when ``data`` is invalid."""
+        if not isinstance(data, dict):
+            logger.warning("Oturum içe aktarılamadı: beklenen sözlük, gelen %s", type(data).__name__)
+            return False
         try:
-            self.content = data.get("content", "")
-            self.edits = [
+            content = data.get("content", "")
+            if not isinstance(content, str):
+                raise ValueError("content alanı metin değil")
+            edits = [
                 WorkspaceEdit.from_dict(edit_data)
                 for edit_data in data.get("edits", [])
             ]
-            self.versions = [
+            versions = [
                 WorkspaceVersion.from_dict(version_data)
                 for version_data in data.get("versions", [])
             ]
-
-            if self.versions:
-                self.current_version_id = self.versions[-1].id
-            else:
-                self._create_version("Imported workspace")
-
-            return True
-        except Exception:
+        except Exception as exc:
+            # Ayrıştırma hatasında mevcut belge korunur; yarım yükleme yapılmaz.
+            logger.warning("Oturum içe aktarılamadı: %s", exc)
             return False
+
+        self.content = content
+        self.edits = edits
+        self.versions = versions
+
+        if self.versions:
+            self.current_version_id = self.versions[-1].id
+        else:
+            self._create_version("Imported workspace")
+
+        return True
 
     def clear_all(self):
         self.set_content("", "user", "Workspace cleared")

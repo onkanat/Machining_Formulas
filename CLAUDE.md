@@ -7,10 +7,10 @@ Bu rehber, LLM Coder standartlarına göre düzenlenen projedeki geliştirme kom
 - **Install dependencies**: `pip install -r project/requirements.txt`
 - **Install project (editable mode)**: `pip install -e project/`
 - **Launch V3 GUI (entrypoint)**: `PYTHONPATH=project/src python -m machining_formulas`
-- **Run all tests**: `pytest project/tests/`
-- **Run all tests (safe fallback)**: `PYTHONPATH=project/src pytest project/tests/`
+- **Run all tests**: `pytest project/` (collects `tests/` and `tests_v3/`)
+- **Run all tests (safe fallback)**: `PYTHONPATH=project/src pytest project/`
 - **Run single test**: `pytest project/tests/test_file.py::test_function_name`
-- **Run with verbose output**: `pytest -v project/tests/`
+- **Run with verbose output**: `pytest -v project/`
 
 ## Code Style Guidelines
 
@@ -52,7 +52,7 @@ Bu rehber, LLM Coder standartlarına göre düzenlenen projedeki geliştirme kom
 - Mock external dependencies (Ollama API, GUI components)
 
 ### LLM Integration
-- Tool names: `calculate_turning_{method}`, `calculate_milling_{method}`, `calculate_material_mass`
+- Tool names: `calculate_turning_{method}`, `calculate_milling_{method}`, `calculate_drilling_{method}`, `calculate_material_mass`
 - Arguments must match calculator parameter definitions exactly
 - Handle OpenAI-compatible (`/v1/chat/completions`, `/v1/models`) and Ollama native (`/api/chat`, `/api/tags`) endpoints; the typed endpoint is tried first
 - Timeout: `OLLAMA_CHAT_TIMEOUT` (connect 10s / read 300s) — soğuk model yüklemesini kapsar; model listesi 15s, bağlantı testi 10s
@@ -61,5 +61,5 @@ Bu rehber, LLM Coder standartlarına göre düzenlenen projedeki geliştirme kom
 ### Security
 - No API keys or secrets in code; keys come from user input or environment only
 - Persisted settings (including the key) live in `~/.config/machining_formulas/settings.json` with mode `600`
-- `ExecuteModeMixin` capsulates eval functionality
+- `ExecuteModeMixin` capsulates eval functionality: AST tabanlı değerlendirici, `calc.<metot>(...)` çağrıları ve sayısal aritmetikle sınırlı (2 kB seçim, 200 düğüm, üs ≤ 64, derinlik ≤ 40); "Konsol" sekmesinde Cmd/Ctrl+Shift+X ile açılır, Cmd/Ctrl+Enter ile seçili ifade çalışır
 - Validate all user inputs before calculations

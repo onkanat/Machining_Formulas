@@ -7,16 +7,40 @@ and dynamic tool schema construction to keep the GUI-focused classes lean.
 from __future__ import annotations
 
 import os
+import re
 from typing import Dict, Iterable, List, Tuple
 
 from machining_formulas.core.engineering_calculator import EngineeringCalculator
 
 _DEFAULT_CHAT_URL = "http://localhost:11434/v1/chat/completions"
+
+# Kategori başına tek araç açıklaması; şema üretimi tek döngüde yapılır.
+_CALC_TOOL_DESCRIPTIONS = {
+    "turning": "Tornalama için '{name}' hesaplaması yapar.",
+    "milling": "Frezeleme için '{name}' hesaplaması yapar.",
+    "drilling": "Delik delme işlemi için '{name}' hesaplaması yapar.",
+}
 _DEFAULT_MODEL_LIST_URL = "http://localhost:11434/v1/models"
 
 # OpenAI-uyumlu sunucular için /v1/chat/completions, Ollama için /api/chat.
 _CHAT_SUFFIXES = ("/v1/chat/completions", "/v1/chat", "/api/chat")
 _MODEL_LIST_SUFFIXES = ("/v1/models", "/api/tags", "/v1/tags")
+
+
+def calculation_tool_slug(calc_name: str) -> str:
+    """Return the canonical tool-name slug for a calculation key.
+
+    Şema üretimi ve araç çözümlemesi aynı kuralı paylaşmalıdır; aksi halde
+    noktalama içeren bir anahtar ("Speed / Feed") şemada "speed_/_feed"
+    olurken çözümlemede "speed_feed" aranır ve araç bulunamaz.
+    """
+    lowered = re.sub(r"[^a-z0-9]+", "_", calc_name.strip().lower())
+    return re.sub(r"_+", "_", lowered).strip("_")
+
+
+def calculation_tool_name(category: str, calc_name: str) -> str:
+    """Build the tool name advertised in the schema for one calculation."""
+    return f"calculate_{category}_{calculation_tool_slug(calc_name)}"
 
 
 def _strip_known_suffix(url: str, suffixes: tuple[str, ...]) -> str:
@@ -179,59 +203,12 @@ def build_calculator_tools_definition(
     """Produce Ollama tool definitions derived from the shared calculator."""
     tools: List[Dict] = []
 
-    for calc_name in calculator.turning_definitions.keys():
-        params_info = calculator.get_calculation_params("turning", calc_name)
-        properties = {
-            param["name"]: {
-                "type": "number",
-                "description": f"{param['display_text_turkish']} ({param['unit']})",
-            }
-            for param in params_info
-        }
-        required = [param["name"] for param in params_info]
-        tools.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": "calculate_turning_" + f"{calc_name.replace(' ', '_').lower()}",
-                    "description": f"Tornalama için '{calc_name}' hesaplaması yapar.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties,
-                        "required": required,
-                    },
-                },
-            }
-        )
-
-    for calc_name in calculator.milling_definitions.keys():
-        params_info = calculator.get_calculation_params("milling", calc_name)
-        properties = {
-            param["name"]: {
-                "type": "number",
-                "description": f"{param['display_text_turkish']} ({param['unit']})",
-            }
-            for param in params_info
-        }
-        required = [param["name"] for param in params_info]
-        tools.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": "calculate_milling_" + f"{calc_name.replace(' ', '_').lower()}",
-                    "description": f"Frezeleme için '{calc_name}' hesaplaması yapar.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties,
-                        "required": required,
-                    },
-                },
-            }
-        )
-
-    if hasattr(calculator, 'drilling_definitions'):
-        for calc_name in calculator.drilling_definitions.keys():
-            params_info = calculator.get_calculation_params("drilling", calc_name)
+    for category, description in _CALC_TOOL_DESCRIPTIONS.items():
+        definitions = getattr(calculator, f"{category}_definitions", None)
+        if not definitions:
+            continue
+        for calc_name in definitions.keys():
+            params_info = calculator.get_calculation_params(category, calc_name)
             properties = {
                 param["name"]: {
                     "type": "number",
@@ -244,8 +221,8 @@ def build_calculator_tools_definition(
                 {
                     "type": "function",
                     "function": {
-                        "name": "calculate_drilling_" + f"{calc_name.replace(' ', '_').lower()}",
-                        "description": f"Delik delme işlemi için '{calc_name}' hesaplaması yapar.",
+                        "name": calculation_tool_name(category, calc_name),
+                        "description": description.format(name=calc_name),
                         "parameters": {
                             "type": "object",
                             "properties": properties,

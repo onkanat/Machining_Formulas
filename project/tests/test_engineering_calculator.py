@@ -44,15 +44,15 @@ def test_error_handling():
     ec = EngineeringCalculator()
     
     # Invalid turning method
-    with pytest.raises(ValueError, match="Invalid turning calculation"):
+    with pytest.raises(ValueError, match="Geçersiz Tornalama hesaplaması"):
         ec.calculate_turning("InvalidMethod", 10, 20)
-        
+
     # Invalid shape
-    with pytest.raises(ValueError, match="Invalid shape"):
+    with pytest.raises(ValueError, match="Geçersiz şekil"):
         ec.calculate_material_mass("invalid_shape", 7.85, 10, 20)
-        
+
     # Incorrect arguments for shape
-    with pytest.raises(ValueError, match="Incorrect arguments for shape"):
+    with pytest.raises(ValueError, match="parametreler hatalı"):
         ec.calculate_material_mass("circle", 7.85, 10, 20, 30)  # circle only takes radius and length (2 args)
 
 
@@ -81,3 +81,38 @@ def test_material_mass_rejects_negative_dimension():
 def test_sphere_mass_needs_no_length():
     ec = EngineeringCalculator()
     assert pytest.approx(ec.calculate_material_mass("sphere", 7.85, 50), rel=1e-6) == 4110.250388
+
+
+def test_shape_parameters_match_volume_signatures():
+    """Açık şekil metadata'sı hacim lambdalarının imzasıyla aynı olmalı."""
+    ec = EngineeringCalculator()
+
+    assert set(ec.shape_parameters) == set(ec.shape_definitions)
+    for shape, func in ec.shape_definitions.items():
+        signature = [
+            name
+            for name in func.__code__.co_varnames[: func.__code__.co_argcount]
+            if name != "length"
+        ]
+        assert ec.get_shape_parameters(shape) == signature, shape
+
+
+@pytest.mark.parametrize(
+    "shape", ["pentagon", "hexagon", "octagon", "nonagon", "decagon"]
+)
+def test_polygon_dimension_is_named_side(shape):
+    """Düzgün çokgenlerde boyut karşıdan karşıya genişlik değil kenar uzunluğudur."""
+    ec = EngineeringCalculator()
+
+    assert ec.get_shape_parameters(shape) == ["side"]
+    assert ec.PARAM_TURKISH_NAMES["side"] == "Kenar Uzunluğu"
+
+
+def test_hexagon_volume_uses_edge_length():
+    """Kenar 10 mm, boy 100 mm altıgen: 3√3/2 · a² · L = 25980.762 mm³."""
+    ec = EngineeringCalculator()
+
+    volume = ec.shape_definitions["hexagon"](10, 100)
+
+    assert pytest.approx(volume, rel=1e-9) == 25980.76211353316
+

@@ -23,17 +23,10 @@ from machining_formulas.llm.material_utils import (
 from machining_formulas.llm.ollama_utils import (
     OLLAMA_CHAT_TIMEOUT,
     auth_headers,
+    calculation_tool_slug,
     candidate_chat_urls,
     prepare_legacy_chat_payload,
 )
-
-
-def _slugify(text: str) -> str:
-    """Convert a calculation key like 'Cutting speed' -> 'cutting_speed'."""
-    lowered = text.strip().lower()
-    lowered = re.sub(r"[^a-z0-9]+", "_", lowered)
-    lowered = re.sub(r"_+", "_", lowered).strip("_")
-    return lowered
 
 
 @dataclass(slots=True)
@@ -222,6 +215,10 @@ class AdvancedCalculator:
             if getattr(self, "history", None) is None:
                 self.history = []  # type: ignore[assignment]
             self.history.append(tool_msg)
+            # Uzun oturumlarda geçmiş sınırsız büyümesin; en yeni kayıtlar tutulur.
+            max_history = 100
+            if len(self.history) > max_history:
+                del self.history[:-max_history]
 
         # Model follow-up çağrısı
         messages_for_model = (
@@ -323,64 +320,25 @@ class AdvancedCalculator:
                 content=content,
             )
 
-        if tool_name.startswith("calculate_turning_"):
-            method_slug = tool_name.removeprefix("calculate_turning_")
+        for category in ("turning", "milling", "drilling"):
+            prefix = f"calculate_{category}_"
+            if not tool_name.startswith(prefix):
+                continue
             method_key = self._resolve_method_key(
-                calc.turning_definitions.keys(),
-                method_slug,
+                getattr(calc, f"{category}_definitions").keys(),
+                tool_name.removeprefix(prefix),
             )
             value, unit = self._run_calc_with_metadata(
                 calc,
-                "turning",
+                category,
                 method_key,
                 arguments,
             )
-            content = self._format_value_with_unit(value, unit)
             return _ToolRunResult(
                 tool_name=tool_name,
                 value=value,
                 unit=unit,
-                content=content,
-            )
-
-        if tool_name.startswith("calculate_milling_"):
-            method_slug = tool_name.removeprefix("calculate_milling_")
-            method_key = self._resolve_method_key(
-                calc.milling_definitions.keys(),
-                method_slug,
-            )
-            value, unit = self._run_calc_with_metadata(
-                calc,
-                "milling",
-                method_key,
-                arguments,
-            )
-            content = self._format_value_with_unit(value, unit)
-            return _ToolRunResult(
-                tool_name=tool_name,
-                value=value,
-                unit=unit,
-                content=content,
-            )
-
-        if tool_name.startswith("calculate_drilling_"):
-            method_slug = tool_name.removeprefix("calculate_drilling_")
-            method_key = self._resolve_method_key(
-                calc.drilling_definitions.keys(),
-                method_slug,
-            )
-            value, unit = self._run_calc_with_metadata(
-                calc,
-                "drilling",
-                method_key,
-                arguments,
-            )
-            content = self._format_value_with_unit(value, unit)
-            return _ToolRunResult(
-                tool_name=tool_name,
-                value=value,
-                unit=unit,
-                content=content,
+                content=self._format_value_with_unit(value, unit),
             )
 
         raise ValueError(f"Bilinmeyen tool: {tool_name}")
@@ -390,7 +348,7 @@ class AdvancedCalculator:
         method_keys: Iterable[str],
         slug: str,
     ) -> str:
-        lookup = {_slugify(k): k for k in method_keys}
+        lookup = {calculation_tool_slug(k): k for k in method_keys}
         if slug not in lookup:
             raise ValueError(f"Geçersiz hesap anahtarı: {slug}")
         return lookup[slug]

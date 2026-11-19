@@ -56,6 +56,15 @@ _MATERIAL_ALIASES = {
 
 _LENGTH_KEYS = ("length", "L", "uzunluk", "boy", "length_mm")
 
+_LENGTH_KEYWORD = r"boy|boyu|boyunda|uzunluk|uzunluğu|uzunluğunda|length"
+
+_LENGTH_PATTERNS = (
+    # "boy 300", "uzunluk: 300 mm"
+    rf"\b(?:{_LENGTH_KEYWORD})\b\D*(\d+(?:[\.,]\d+)?)",
+    # "300 mm boy", "300 boyunda"
+    rf"(\d+(?:[\.,]\d+)?)\s*(?:mm|cm|m)?\s*(?:{_LENGTH_KEYWORD})\b",
+)
+
 _DIAMETER_KEYS = ("diameter", "cap", "çap", "D")
 
 
@@ -125,9 +134,26 @@ def _resolve_density(
     user_text = _latest_user_text(messages_history)
     if user_text:
         lowered = user_text.lower()
-        for alias, canonical in _MATERIAL_ALIASES.items():
-            if alias in lowered:
-                return _density_from_catalog(calculator, canonical)
+        # En uzun alias önceliklidir ("paslanmaz çelik" > "çelik"). Aynı uzunlukta
+        # farklı malzemeler eşleşirse tahmin edilmez, kullanıcıdan netleştirme istenir.
+        matches = [
+            (len(alias), alias, canonical)
+            for alias, canonical in _MATERIAL_ALIASES.items()
+            if re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", lowered)
+        ]
+        if matches:
+            matches.sort(reverse=True)
+            best_length, _best_alias, best_canonical = matches[0]
+            rivals = {
+                canonical
+                for length, _alias, canonical in matches
+                if length == best_length and canonical != best_canonical
+            }
+            if rivals:
+                raise ValueError(
+                    "Birden fazla malzeme eşleşti; lütfen malzeme adını veya yoğunluğu açıkça belirtin"
+                )
+            return _density_from_catalog(calculator, best_canonical)
 
     raise ValueError("'density' (g/cm³) veya malzeme adı saptanamadı")
 
@@ -150,12 +176,13 @@ def _resolve_length(
     if raw_length is None:
         user_text = _latest_user_text(messages_history)
         if user_text:
-            match = re.search(
-                r"(boy|uzunluk|length)\D*(\d+(?:[\.,]\d+)?)",
-                user_text.lower(),
-            )
-            if match:
-                raw_length = match.group(2)
+            lowered = user_text.lower()
+            # "boy" yalnızca tam kelime olarak eşleşir; "boya 5" uzunluk sayılmaz.
+            for pattern in _LENGTH_PATTERNS:
+                match = re.search(pattern, lowered)
+                if match:
+                    raw_length = match.group(1)
+                    break
 
     if raw_length is None:
         raise ValueError("'length' (mm) parametresi eksik")

@@ -182,6 +182,18 @@ class TestWorkspaceBuffer:
         assert buffer2.get_content() == "Hello Beautiful World"
         assert len(buffer2.edits) == len(buffer1.edits)
 
+    def test_invalid_import_keeps_existing_document(self):
+        """Bozuk bir dosya mevcut belgeyi yarım yüklemeyle bozmamalı."""
+        buffer = WorkspaceBuffer()
+        buffer.set_content("Korunacak metin", "user")
+        before = buffer.get_content()
+
+        assert buffer.import_session({"content": 123}) is False
+        assert buffer.import_session(["content"]) is False
+        assert buffer.import_session({"content": "yeni", "edits": ["bozuk"]}) is False
+
+        assert buffer.get_content() == before
+
     def test_clear_all(self):
         """Test clearing workspace."""
         buffer = WorkspaceBuffer()
@@ -385,6 +397,16 @@ class TestSuggestionReviewFlow:
         assert first.id == second.id
         assert len(buffer.get_pending_suggestions()) == 1
 
+    def test_same_replacement_text_at_different_positions_is_not_deduped(self):
+        buffer = WorkspaceBuffer()
+        buffer.set_content("XaXb", "user")
+
+        first = buffer.suggest_edit(0, 1, "Y")
+        second = buffer.suggest_edit(2, 3, "Y")
+
+        assert first.id != second.id
+        assert len(buffer.get_pending_suggestions()) == 2
+
     def test_accepting_at_end_suggestion_appends_after_later_edits(self):
         buffer = WorkspaceBuffer()
         buffer.set_content("Hello", "user")
@@ -433,6 +455,109 @@ class TestAnswerBlock:
         block = format_answer_block("x" * 600, "yanıt")
 
         assert block == "yanıt"
+
+
+class TestEditorBufferSync:
+    """Editörde yazılan metin buffer'a eksiksiz yansımalı."""
+
+    @staticmethod
+    def _replay(old: str, new: str) -> str:
+        from machining_formulas.workspace.workspace_editor import WorkspaceEditor
+
+        buffer = WorkspaceBuffer()
+        buffer.set_content(old)
+
+        class Recorder:
+            workspace_buffer = buffer
+
+        WorkspaceEditor._record_text_change(Recorder(), old, new)
+        return buffer.get_content()
+
+    @pytest.mark.parametrize(
+        ("old", "new"),
+        [
+            ("a", "aa"),  # tek karakterin tekrarı
+            ("abc", "abcabc"),  # metnin kopyalanması
+            ("abab", "ababab"),
+            ("abc", "abcd"),
+            ("hello world", "hello"),
+            ("abc", ""),
+            ("", "abc"),
+            ("Vc = 170", "Vc = 172"),
+        ],
+    )
+    def test_buffer_matches_edited_text(self, old, new):
+        assert self._replay(old, new) == new
+
+    def test_identical_text_records_no_edit(self):
+        from machining_formulas.workspace.workspace_editor import WorkspaceEditor
+
+        buffer = WorkspaceBuffer()
+        buffer.set_content("abc")
+        before = len(buffer.edits)
+
+        class Recorder:
+            workspace_buffer = buffer
+
+        WorkspaceEditor._record_text_change(Recorder(), "abc", "abc")
+
+        assert len(buffer.edits) == before
+
+
+class TestEditorSavedState:
+    """Belge yalnızca gerçekten kaydedilince "temiz" sayılmalı."""
+
+    class _FakeText:
+        def __init__(self):
+            self.content = ""
+
+        def delete(self, *_args):
+            self.content = ""
+
+        def insert(self, index, text):
+            self.content = text if index == "1.0" else self.content + text
+
+        def edit_modified(self, _flag):
+            pass
+
+        def get(self, *_args):
+            return self.content
+
+    @classmethod
+    def _editor(cls, content: str):
+        from machining_formulas.workspace.workspace_editor import WorkspaceEditor
+
+        buffer = WorkspaceBuffer()
+
+        class Dummy:
+            workspace_buffer = buffer
+            text_editor = cls._FakeText()
+            _user_editing = True
+            _last_known_content = ""
+            _saved_content = ""
+
+            def _update_line_numbers(self):
+                pass
+
+            def _update_status(self):
+                pass
+
+            def get_current_content(self):
+                return self.text_editor.get().rstrip("\n")
+
+        dummy = Dummy()
+        buffer.set_content(content)
+        return dummy, WorkspaceEditor
+
+    def test_loading_content_does_not_mark_document_saved(self):
+        dummy, editor = self._editor("öneri kabul edildi")
+
+        editor._load_content(dummy)
+
+        assert editor.is_dirty(dummy) is True
+
+        editor.mark_saved(dummy)
+        assert editor.is_dirty(dummy) is False
 
     def test_empty_answer_returns_empty_block(self):
         from machining_formulas.workspace.workspace_editor import format_answer_block

@@ -3,17 +3,11 @@ from __future__ import annotations
 import re
 
 from machining_formulas.core.engineering_calculator import EngineeringCalculator
-from machining_formulas.llm.ollama_utils import build_calculator_tools_definition
-
-
-def _slugify_like_schema(calc_name: str) -> str:
-    """Tool şeması şu an sadece boşlukları '_' yapıp lower() ediyor.
-
-    Not: AdvancedCalculator tarafında daha genel bir slugify var.
-    Burada mevcut şema davranışını doğruluyoruz (regresyon yakalamak için).
-    """
-
-    return calc_name.replace(" ", "_").lower()
+from machining_formulas.gui.advanced_calculator import AdvancedCalculator
+from machining_formulas.llm.ollama_utils import (
+    build_calculator_tools_definition,
+    calculation_tool_slug,
+)
 
 
 def _extract_tool_names(tools_def: list[dict]) -> list[str]:
@@ -34,11 +28,11 @@ def test_tools_definition_covers_all_formulas():
 
     expected = set()
     for key in calc.turning_definitions.keys():
-        expected.add(f"calculate_turning_{_slugify_like_schema(key)}")
+        expected.add(f"calculate_turning_{calculation_tool_slug(key)}")
     for key in calc.milling_definitions.keys():
-        expected.add(f"calculate_milling_{_slugify_like_schema(key)}")
+        expected.add(f"calculate_milling_{calculation_tool_slug(key)}")
     for key in getattr(calc, 'drilling_definitions', {}).keys():
-        expected.add(f"calculate_drilling_{_slugify_like_schema(key)}")
+        expected.add(f"calculate_drilling_{calculation_tool_slug(key)}")
     expected.add("calculate_material_mass")
 
     assert names == expected
@@ -75,7 +69,7 @@ def test_turning_schema_required_matches_calculator_param_meta():
     tools_def = build_calculator_tools_definition(calc)
 
     for calc_name in calc.turning_definitions.keys():
-        tool_name = f"calculate_turning_{_slugify_like_schema(calc_name)}"
+        tool_name = f"calculate_turning_{calculation_tool_slug(calc_name)}"
         tool = next(
             (t for t in tools_def if (t.get("function") or {}).get("name") == tool_name),
             None,
@@ -95,7 +89,7 @@ def test_milling_schema_required_matches_calculator_param_meta():
     tools_def = build_calculator_tools_definition(calc)
 
     for calc_name in calc.milling_definitions.keys():
-        tool_name = f"calculate_milling_{_slugify_like_schema(calc_name)}"
+        tool_name = f"calculate_milling_{calculation_tool_slug(calc_name)}"
         tool = next(
             (t for t in tools_def if (t.get("function") or {}).get("name") == tool_name),
             None,
@@ -115,7 +109,7 @@ def test_drilling_schema_required_matches_calculator_param_meta():
     tools_def = build_calculator_tools_definition(calc)
 
     for calc_name in getattr(calc, 'drilling_definitions', {}).keys():
-        tool_name = f"calculate_drilling_{_slugify_like_schema(calc_name)}"
+        tool_name = f"calculate_drilling_{calculation_tool_slug(calc_name)}"
         tool = next(
             (t for t in tools_def if (t.get("function") or {}).get("name") == tool_name),
             None,
@@ -137,3 +131,25 @@ def test_tool_names_are_safe_identifiers():
 
     for name in names:
         assert re.fullmatch(r"[a-z0-9_]+", name), f"Geçersiz tool adı: {name}"
+
+
+def test_tool_slug_normalizes_punctuation():
+    """Şema ve çalıştırıcı aynı slug kuralını kullanmalı (noktalama dahil)."""
+    assert calculation_tool_slug("Speed / Feed") == "speed_feed"
+    assert calculation_tool_slug("Cutting speed") == "cutting_speed"
+
+
+def test_schema_tool_names_resolve_in_executor():
+    """Şemada ilan edilen her araç adı çalıştırıcıda çözülebilmeli."""
+    calc = EngineeringCalculator()
+    executor = AdvancedCalculator()
+
+    for category in ("turning", "milling", "drilling"):
+        keys = getattr(calc, f"{category}_definitions").keys()
+        prefix = f"calculate_{category}_"
+        for key in keys:
+            tool_name = prefix + calculation_tool_slug(key)
+            resolved = executor._resolve_method_key(
+                keys, tool_name.removeprefix(prefix)
+            )
+            assert resolved == key

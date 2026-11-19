@@ -23,6 +23,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
+testpaths = ["tests", "tests_v3"]
+pythonpath = ["src"]
 
 [tool.pyright]
 include = ["src"]

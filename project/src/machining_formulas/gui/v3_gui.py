@@ -63,9 +63,19 @@ ec = EngineeringCalculator()
 
 
 def parse_user_number(raw: Any, label: str) -> float:
-    """Parse a user-entered number and raise a Turkish ValueError when invalid."""
+    """Parse a user-entered number and raise a Turkish ValueError when invalid.
+
+    Kullanıcı Türkçe ondalık ayırıcısını (virgül) da yazabilir: "12,5". Binlik
+    nokta ile birlikte gelirse ("1.234,5") nokta atılır.
+    """
+    text = str(raw).strip().replace(" ", "")
+    if "," in text:
+        if "." in text:
+            text = text.replace(".", "").replace(",", ".")
+        else:
+            text = text.replace(",", ".")
     try:
-        return float(str(raw).strip())
+        return float(text)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"'{label}' geçerli bir sayı olmalıdır.") from exc
 
@@ -90,6 +100,9 @@ class V3Calculator(ExecuteModeMixin):
         # Hover popups states
         self._active_hover_popup: tk.Toplevel | None = None
         self._active_popup_photo: ImageTk.PhotoImage | None = None
+
+        # Execute modu durumu (ExecuteModeMixin sağlar)
+        super().__init__()
 
         # Initialize workspace buffer
         self.workspace_buffer = WorkspaceBuffer()
@@ -124,20 +137,10 @@ class V3Calculator(ExecuteModeMixin):
         self.material_names = list(ec.material_density.keys())
         self.material_densities = ec.material_density.copy()
 
-        # Cache parameter mappings
-        self.param_to_gui_key_map = {
-            "radius": "Yarıçap",
-            "width": "Genişlik",
-            "height": "Yükseklik",
-            "outer_radius": "Dış Yarıçap",
-            "inner_radius": "İç Yarıçap",
-            "diagonal1": "Köşegen 1",
-            "diagonal2": "Köşegen 2",
-        }
-
     def setup_ui(self):
         """Setup the main V3 interface."""
         self.root.title("🔧 Mühendislik Hesaplayıcı V3 - Çalışma Alanı")
+        self.root.report_callback_exception = self._report_callback_exception
 
         # Configure styles first (before creating widgets)
         self._setup_styles()
@@ -200,17 +203,24 @@ class V3Calculator(ExecuteModeMixin):
     def _enable_widget_focus(self, widget):
         """Recursively enable focus for all widgets."""
         try:
-            if isinstance(widget, (tk.Entry, tk.Text)):
+            if isinstance(widget, tk.Text):
                 widget.config(takefocus=1)
-                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set())
-                widget.bind("<FocusIn>", lambda e: None)
+                # add="+" mevcut widget bağlamalarını (imleç, seçim, tıklama) korur.
+                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set(), add="+")
+                widget.bind("<FocusIn>", lambda e: None, add="+")
+                # Editörde Tab girinti ekler; alandan çıkmak için Shift+Tab kullanılır.
+                widget.bind("<Tab>", self._insert_indent_at_cursor, add="+")
+            elif isinstance(widget, tk.Entry):
+                widget.config(takefocus=1)
+                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set(), add="+")
+                widget.bind("<FocusIn>", lambda e: None, add="+")
             elif isinstance(widget, (ttk.Entry, ttk.Combobox)):
                 widget.configure(takefocus=True)
-                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set())
-                widget.bind("<FocusIn>", lambda e: None)
+                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set(), add="+")
+                widget.bind("<FocusIn>", lambda e: None, add="+")
             elif isinstance(widget, (ttk.Button, tk.Button)):
                 widget.configure(takefocus=True)
-                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set())
+                widget.bind("<Button-1>", lambda e, w=widget: w.focus_set(), add="+")
 
             for child in widget.winfo_children():
                 self._enable_widget_focus(child)
@@ -326,6 +336,7 @@ class V3Calculator(ExecuteModeMixin):
         self._create_milling_tab()
         self._create_material_tab()
         self._create_drilling_tab()
+        self._create_console_tab()
 
     def _create_turning_tab(self):
         """Create turning calculations tab."""
@@ -415,9 +426,10 @@ class V3Calculator(ExecuteModeMixin):
             self.mass_material.set(self.material_names[0])
             _on_material_select()
 
-        self._update_mass_params()
+        self.mass_calc_button = ttk.Button(frame, text="Hesapla", command=self._calculate_mass)
+        self.mass_calc_button.pack(pady=5)
 
-        ttk.Button(frame, text="Hesapla", command=self._calculate_mass).pack(pady=5)
+        self._update_mass_params()
 
         self.mass_result = ttk.Label(
             frame, text="", font=("Arial", 10, "bold"), foreground="blue"
@@ -443,6 +455,58 @@ class V3Calculator(ExecuteModeMixin):
             calc_type_display="Delik Delme Hesaplamaları",
             state_key="drilling",
         )
+
+    def _create_console_tab(self):
+        """Create the experimental execute-mode console tab."""
+        console_frame = ttk.Frame(self.calc_notebook, style="Calc.TFrame")
+        self.calc_notebook.add(console_frame, text="Konsol")
+        self._console_frame = console_frame
+
+        ttk.Label(
+            console_frame,
+            text=(
+                "Deneysel: bir ifade yazıp seçin, sonra Cmd/Ctrl+Enter ile değerlendirin. "
+                "Yalnızca 'calc.<hesap>(...)' çağrıları ve sayısal aritmetik desteklenir."
+            ),
+            style="Calc.TLabel",
+            wraplength=360,
+        ).pack(fill="x", padx=6, pady=(6, 2))
+
+        self.result_text = tk.Text(
+            console_frame,
+            height=10,
+            wrap="word",
+            font=("Consolas", 10),
+            bg="white",
+            fg="#212529",
+            insertbackground="#212529",
+            padx=6,
+            pady=6,
+        )
+        self.result_text.pack(fill="both", expand=True, padx=6, pady=(2, 6))
+
+        # Widget düzeyinde bağlanır: Text sınıfının <Return> bağlaması satır
+        # eklemeden önce çalışsın diye "break" döndürülür.
+        for prefix in ("Control", "Command"):
+            self.result_text.bind(f"<{prefix}-Return>", self._run_exec_shortcut)
+            self.result_text.bind(
+                f"<{prefix}-Shift-Return>", self._run_exec_shortcut
+            )
+
+    def _get_exec_mode_calculator(self) -> EngineeringCalculator:
+        """Provider required by ExecuteModeMixin."""
+        return ec
+
+    def _open_exec_mode(self) -> None:
+        """Toggle execute mode and reveal the console tab when turning it on."""
+        if getattr(self, "execute_mode", False):
+            self.disable_execute_mode()
+            return
+        try:
+            self.calc_notebook.select(self._console_frame)
+        except tk.TclError:
+            pass
+        self.enable_execute_mode()
 
     def _assets_image_path(self, image_filename: str) -> Path:
         """Resolve an image under assets/images/ relative to repository root."""
@@ -792,41 +856,61 @@ class V3Calculator(ExecuteModeMixin):
         model_menu.add_separator()
         model_menu.add_command(label="Çalışma Alanını Analiz Et", accelerator=f"{mod_text}Shift+A", command=self._analyze_workspace)
 
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Araçlar", menu=tools_menu)
+        tools_menu.add_command(label="Execute Modu Aç/Kapat (Deneysel)", accelerator=f"{mod_text}Shift+X", command=self._open_exec_mode)
+        tools_menu.add_command(label="Seçili Kodu Çalıştır", accelerator=f"{mod_text}Return", command=self.execute_calculation)
+
     def _setup_keyboard_shortcuts(self):
         """Configure macOS-prioritized, cross-platform keyboard shortcuts for menus and tabs."""
         is_mac = sys.platform == "darwin"
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        def _bind(key, callback, is_shift=False):
+        def _bind(key, callback, is_shift=False, guard_typing=False):
             shift_str = "Shift-" if is_shift else ""
 
+            def _handler(_event):
+                # Metin alanında yazarken kısayolun düzenleme tuşunu ezmesini engelle
+                # (ör. Cmd+A "tümünü seç" veya Cmd+E "satır sonu").
+                if guard_typing and self._text_has_focus():
+                    return None
+                callback()
+                return None
+
             # Control bindings
-            self.root.bind_all(f"<Control-{shift_str}{key.lower()}>", lambda event: callback())
+            self.root.bind_all(f"<Control-{shift_str}{key.lower()}>", _handler)
             if len(key) == 1 and key.isalpha():
-                self.root.bind_all(f"<Control-{shift_str}{key.upper()}>", lambda event: callback())
+                self.root.bind_all(f"<Control-{shift_str}{key.upper()}>", _handler)
 
             # Command bindings on macOS
             if is_mac:
-                self.root.bind_all(f"<Command-{shift_str}{key.lower()}>", lambda event: callback())
+                self.root.bind_all(f"<Command-{shift_str}{key.lower()}>", _handler)
                 if len(key) == 1 and key.isalpha():
-                    self.root.bind_all(f"<Command-{shift_str}{key.upper()}>", lambda event: callback())
+                    self.root.bind_all(f"<Command-{shift_str}{key.upper()}>", _handler)
 
         # File Operations
-        _bind("n", self._new_workspace)
-        _bind("o", self._open_workspace)
+        _bind("n", self._new_workspace, guard_typing=True)
+        _bind("o", self._open_workspace, guard_typing=True)
         _bind("s", self._save_workspace)
-        _bind("e", self._export_workspace)
-        _bind("q", lambda: self.root.quit())
+        _bind("e", self._export_workspace, guard_typing=True)
+        _bind("q", self._on_close)
 
         # Edit Operations
         _bind("z", self.workspace_editor._undo)
         _bind("y", self.workspace_editor._redo)
         _bind("z", self.workspace_editor._redo, is_shift=True)  # Cmd+Shift+Z for macOS
-        _bind("l", self.workspace_editor._clear_workspace)
+        _bind("l", self.workspace_editor._clear_workspace, guard_typing=True)
 
         # Model & AI Operations
         _bind("t", self.test_model_connection, is_shift=True)  # Cmd+Shift+T
-        _bind("r", self.refresh_model_list)
-        _bind("a", self._analyze_workspace, is_shift=True)  # Cmd+Shift+A
+        _bind("r", self.refresh_model_list, guard_typing=True)
+        _bind("a", self._analyze_workspace, is_shift=True, guard_typing=True)  # Cmd+Shift+A
+
+        # Execute Mode (Deneysel)
+        _bind("x", self._open_exec_mode, is_shift=True)
+        for prefix in ("Control", "Command"):
+            self.root.bind_all(f"<{prefix}-Return>", self._run_exec_shortcut)
+            self.root.bind_all(f"<{prefix}-Shift-Return>", self._run_exec_shortcut)
 
         # Tab Navigation
         _bind("1", lambda: self.calc_notebook.select(0))
@@ -839,6 +923,26 @@ class V3Calculator(ExecuteModeMixin):
         self.root.bind_all("<Help>", lambda event: self._show_shortcuts_help())
         _bind("slash", self._show_shortcuts_help)
         _bind("question", self._show_shortcuts_help)
+
+    def _run_exec_shortcut(self, _event=None):
+        """Execute the console selection without letting the shortcut insert a newline."""
+        self.execute_calculation()
+        return "break"
+
+    def _report_callback_exception(self, exc_type, exc_value, exc_tb) -> None:
+        """Log uncaught Tk callback errors and tell the user instead of failing silently."""
+        logger.error("Arayüz geri çağrısında hata", exc_info=(exc_type, exc_value, exc_tb))
+        try:
+            messagebox.showerror("Beklenmeyen Hata", f"İşlem tamamlanamadı: {exc_value}")
+        except tk.TclError:
+            pass
+
+    def _text_has_focus(self) -> bool:
+        """Return True when a text widget owns the keyboard focus."""
+        try:
+            return isinstance(self.root.focus_get(), tk.Text)
+        except (KeyError, tk.TclError):
+            return False
 
     def _show_shortcuts_help(self):
         """Display a comprehensive help dialog for keyboard shortcuts."""
@@ -866,10 +970,16 @@ class V3Calculator(ExecuteModeMixin):
             f"  • {mod}+2 : Frezeleme Sekmesi\n"
             f"  • {mod}+3 : Malzeme Sekmesi\n"
             f"  • {mod}+4 : Delme Sekmesi\n\n"
+            "🧪 Konsol (Deneysel):\n"
+            f"  • {mod}+Shift+X : Execute modunu aç/kapat (Konsol sekmesi)\n"
+            f"  • {mod}+Enter : Konsolda seçili ifadeyi çalıştır\n\n"
             "⚡ Diğer Kolaylıklar:\n"
             "  • Enter (Giriş) : Sayısal parametre alanlarında doğrudan Hesapla tetikler\n"
             "  • Esc : Çıkan diyalog veya popup pencereleri kapatır\n"
-            "  • F1 veya Cmd+/ : Bu kısayol yardım menüsünü açar\n"
+            f"  • F1 veya {mod}+/ : Bu kısayol yardım menüsünü açar\n"
+            f"  • Metin düzenlerken {mod}+A, {mod}+E, {mod}+L, {mod}+N, {mod}+O, {mod}+R\n"
+            "    devre dışıdır; bu tuşlar metin alanının kendi işlevini korur\n"
+            "  • Tab / Shift+Tab : Alanlar arasında ileri/geri geçiş\n"
         )
         messagebox.showinfo("Klavye Kısayolları", help_text)
 
@@ -893,41 +1003,26 @@ class V3Calculator(ExecuteModeMixin):
         shape_key = self.reverse_shape_names.get(shape_turkish)
 
         if not shape_key:
-            error_frame = ttk.Frame(self.mass_params_frame, style="Calc.TFrame")
-            error_frame.pack(fill="x", pady=1)
-            ttk.Label(
-                error_frame,
-                text=f"Hata: {shape_turkish} şekli desteklenmiyor",
-                foreground="red",
-                font=("Arial", 9),
-            ).pack(side="left")
-            self.mass_param_widgets = {}
+            self._mark_unsupported_shape(shape_turkish)
             return
 
         try:
             param_names = ec.get_shape_parameters(shape_key)
         except ValueError:
-            error_frame = ttk.Frame(self.mass_params_frame, style="Calc.TFrame")
-            error_frame.pack(fill="x", pady=1)
-            ttk.Label(
-                error_frame,
-                text=f"Hata: {shape_turkish} şekli desteklenmiyor",
-                foreground="red",
-                font=("Arial", 9),
-            ).pack(side="left")
-            self.mass_param_widgets = {}
+            self._mark_unsupported_shape(shape_turkish)
             return
 
         self.mass_param_widgets = {}
         self.current_shape_key = shape_key
+        if hasattr(self, "mass_calc_button"):
+            self.mass_calc_button.state(["!disabled"])
 
         for param_name in param_names:
             frame = ttk.Frame(self.mass_params_frame, style="Calc.TFrame")
             frame.pack(fill="x", pady=1)
 
-            display_name = self.param_to_gui_key_map.get(
-                param_name,
-                ec.PARAM_TURKISH_NAMES.get(param_name, param_name.capitalize()),
+            display_name = ec.PARAM_TURKISH_NAMES.get(
+                param_name, param_name.capitalize()
             )
             ttk.Label(frame, text=f"{display_name}:", width=15).pack(side="left")
             entry = ttk.Entry(frame, width=15)
@@ -939,7 +1034,8 @@ class V3Calculator(ExecuteModeMixin):
         if shape_key != "sphere":
             length_frame = ttk.Frame(self.mass_params_frame, style="Calc.TFrame")
             length_frame.pack(fill="x", pady=1)
-            ttk.Label(length_frame, text="Uzunluk:", width=15).pack(side="left")
+            length_label = ec.PARAM_TURKISH_NAMES.get("length", "Uzunluk")
+            ttk.Label(length_frame, text=f"{length_label}:", width=15).pack(side="left")
             length_entry = ttk.Entry(length_frame, width=15)
             length_entry.pack(side="left", padx=(5, 0))
             length_entry.bind("<Return>", lambda _e: self._calculate_mass())
@@ -947,8 +1043,26 @@ class V3Calculator(ExecuteModeMixin):
 
         self.mass_params_frame.update_idletasks()
 
+    def _mark_unsupported_shape(self, shape_turkish: str) -> None:
+        """Show a hint and disable calculation for an unsupported shape."""
+        error_frame = ttk.Frame(self.mass_params_frame, style="Calc.TFrame")
+        error_frame.pack(fill="x", pady=1)
+        ttk.Label(
+            error_frame,
+            text=f"Hata: {shape_turkish} şekli desteklenmiyor",
+            foreground="red",
+            font=("Arial", 9),
+        ).pack(side="left")
+        self.mass_param_widgets = {}
+        self.current_shape_key = None
+        if hasattr(self, "mass_calc_button"):
+            self.mass_calc_button.state(["disabled"])
+
     def _calculate_mass(self):
         """Calculate mass."""
+        if not self.current_shape_key:
+            messagebox.showerror("Hata", "Lütfen desteklenen bir şekil seçin.")
+            return
         try:
             shape_key = self.current_shape_key
             density = parse_user_number(self.mass_density.get(), "Yoğunluk")
@@ -967,7 +1081,10 @@ class V3Calculator(ExecuteModeMixin):
                 params_dict[param_name] = value
 
             if shape_key != "sphere" and "length" in self.mass_param_widgets:
-                length = parse_user_number(self.mass_param_widgets["length"].get(), "length")
+                length_label = ec.PARAM_TURKISH_NAMES.get("length", "Uzunluk")
+                length = parse_user_number(
+                    self.mass_param_widgets["length"].get(), length_label
+                )
                 param_values.append(length)
                 params_dict["length"] = length
 
@@ -1013,14 +1130,16 @@ class V3Calculator(ExecuteModeMixin):
             return
 
         question = (request.question or "").strip()
-        source_text = (request.source_text or "").strip()
+        # Düzenleme yolu ham seçimi kullanır: kırpılan metnin uzunluğu, seçimin
+        # gerçek ofsetiyle eşleşmediği için yanlış aralığı değiştirirdi.
+        source_text = request.source_text or ""
 
-        if not question and not source_text:
+        if not question and not source_text.strip():
             self.workspace_editor.finish_request("Boş istek")
             return
 
         if question:
-            self._answer_workspace_question(question, source_text, request)
+            self._answer_workspace_question(question, source_text.strip(), request)
         else:
             self._edit_workspace_text(source_text, request)
 
@@ -1080,8 +1199,11 @@ class V3Calculator(ExecuteModeMixin):
             answer = str(assistant_msg.get("content", "")).strip() or "(boş yanıt)"
             # Bazı modeller tools varken bile doğrudan (ve bazen yanlış birimle) yanıt verebiliyor.
             # Bu durumda sık sorulan kalıplar için yerel/araç tabanlı fallback uygula.
+            # Model yanıtı korunur; yerel araç sonucu ayrı bir satırda gösterilir.
             fallback = self._try_local_tool_fallback(question, messages, answer)
-            return fallback or answer
+            if fallback and fallback.strip() not in answer:
+                return f"{answer}\n\n🧮 Yerel araç doğrulaması: {fallback.strip()}"
+            return answer
 
         def apply(answer: str) -> None:
             block = format_answer_block(question, answer)
@@ -1168,7 +1290,13 @@ class V3Calculator(ExecuteModeMixin):
 
         if replacement is not None:
             start = max(0, min(request.offset, len(content)))
-            end = min(start + len(replacement), len(content))
+            end = start + len(replacement)
+            if content[start:end] != replacement:
+                # Model yanıtı beklerken belge değişti; bayat ofsetle öneri üretme.
+                self.workspace_editor.finish_request(
+                    "Metin değişti — öneri oluşturulmadı, lütfen yeniden gönderin"
+                )
+                return
             edit = self.workspace_buffer.suggest_edit(start, end, text)
         elif request.mode == MODE_INSERT:
             offset = max(0, min(request.offset, len(content)))
@@ -1218,7 +1346,8 @@ class V3Calculator(ExecuteModeMixin):
                         messages_history,
                     )
                     return tool_result.content
-                except Exception:
+                except Exception as exc:
+                    logger.warning("Yerel araç yedeği başarısız: %s", exc)
                     return None
 
         return None
@@ -1410,6 +1539,15 @@ class V3Calculator(ExecuteModeMixin):
         # Populate the text area initially
         self._populate_analysis_text(text_area, result_text)
 
+        # Diyalog kapandıktan sonra gelen yanıtlar var olmayan widget'lara yazmamalı.
+        closed = {"value": False}
+
+        def _on_destroy(event):
+            if event.widget is dialog:
+                closed["value"] = True
+
+        dialog.bind("<Destroy>", _on_destroy, add="+")
+
         # Actions implementation
         def do_copy():
             """Copy entire text content of the report to the clipboard."""
@@ -1437,22 +1575,27 @@ class V3Calculator(ExecuteModeMixin):
             api_key = self._api_key_value()
 
             def work() -> str:
-                return str(
-                    single_chat_request(
-                        model_url,
-                        model_name,
-                        context,
-                        timeout=OLLAMA_CHAT_TIMEOUT,
-                        api_key=api_key,
-                    )
+                result = single_chat_request(
+                    model_url,
+                    model_name,
+                    context,
+                    timeout=OLLAMA_CHAT_TIMEOUT,
+                    api_key=api_key,
                 )
+                if isinstance(result, dict):
+                    raise RuntimeError(result.get("error", "Modelden yanıt alınamadı"))
+                return str(result).strip() or "Analiz sonucunda modelden geçerli bir yanıt alınamadı."
 
             def apply(new_response: str) -> None:
+                if closed["value"]:
+                    return
                 refresh_btn.configure(state=tk.NORMAL)
                 self._populate_analysis_text(text_area, new_response)
                 self.update_status_bar("Yeniden analiz tamamlandı")
 
             def fail(exc: Exception) -> None:
+                if closed["value"]:
+                    return
                 refresh_btn.configure(state=tk.NORMAL)
                 logger.error("Yeniden analiz başarısız", exc_info=exc)
                 text_area.configure(state=tk.NORMAL)
@@ -1606,15 +1749,35 @@ class V3Calculator(ExecuteModeMixin):
         """Handle workspace content change."""
         return
 
+    def _confirm_discard_changes(self, action: str) -> bool:
+        """Ask what to do with unsaved edits; return False to cancel ``action``."""
+        if not self.workspace_editor.is_dirty():
+            return True
+        answer = messagebox.askyesnocancel(
+            "Kaydedilmemiş Değişiklikler",
+            "Çalışma alanında kaydedilmemiş değişiklikler var.\n\n"
+            f"{action} öncesinde kaydetmek ister misiniz?",
+        )
+        if answer is None:
+            return False
+        if answer:
+            return self._save_workspace()
+        return True
+
+    def _on_close(self) -> None:
+        """Close the application, guarding unsaved workspace content."""
+        if not self._confirm_discard_changes("Çıkış"):
+            return
+        self.root.destroy()
+
     def _new_workspace(self):
         """Create new workspace."""
-        if messagebox.askyesno(
-            "Yeni Çalışma Alanı",
-            "Mevcut çalışma alanını temizlemek istediğinizden emin misiniz?",
-        ):
-            self.workspace_buffer.clear_all()
-            self.workspace_editor._load_content()
-            self.update_status_bar("Yeni çalışma alanı oluşturuldu")
+        if not self._confirm_discard_changes("Yeni çalışma alanı oluşturma"):
+            return
+        self.workspace_buffer.clear_all()
+        self.workspace_editor._load_content()
+        self.workspace_editor.mark_saved()
+        self.update_status_bar("Yeni çalışma alanı oluşturuldu")
 
     def _open_workspace(self):
         """Open workspace from file."""
@@ -1624,13 +1787,15 @@ class V3Calculator(ExecuteModeMixin):
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
         )
 
-        if file_path:
+        if file_path and self._confirm_discard_changes("Dosya açma"):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
                 if self.workspace_buffer.import_session(data):
                     self.workspace_editor._load_content()
+                    # Açılan dosya temiz başlar; ilk değişiklikte kirlenir.
+                    self.workspace_editor.mark_saved()
                     self.update_status_bar(f"Çalışma alanı açıldı: {file_path}")
                 else:
                     messagebox.showerror("Hata", "Çalışma alanı açılamadı.")
@@ -1638,24 +1803,28 @@ class V3Calculator(ExecuteModeMixin):
             except Exception as e:
                 messagebox.showerror("Hata", f"Dosya açılırken hata: {str(e)}")
 
-    def _save_workspace(self):
-        """Save workspace to file."""
+    def _save_workspace(self) -> bool:
+        """Save workspace to file; return True when the document was saved."""
         file_path = filedialog.asksaveasfilename(
             title="Çalışma Alanını Kaydet",
             defaultextension=".json",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
         )
 
-        if file_path:
-            try:
-                data = self.workspace_buffer.export_session()
-                with open(file_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
+        if not file_path:
+            return False
+        try:
+            data = self.workspace_buffer.export_session()
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
 
-                self.update_status_bar(f"Çalışma alanı kaydedildi: {file_path}")
+            self.workspace_editor.mark_saved()
+            self.update_status_bar(f"Çalışma alanı kaydedildi: {file_path}")
+            return True
 
-            except Exception as e:
-                messagebox.showerror("Hata", f"Dosya kaydedilirken hata: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Dosya kaydedilirken hata: {str(e)}")
+            return False
 
     def _export_workspace(self):
         """Export workspace to text file."""
@@ -1776,67 +1945,35 @@ class V3Calculator(ExecuteModeMixin):
 
         threading.Thread(target=runner, daemon=True).start()
 
-    def _handle_tab_navigation(self, event):
-        """Handle Tab key navigation between widgets."""
+    def _insert_indent_at_cursor(self, event):
+        """Insert a tab stop into the focused text widget."""
         try:
-            current = self.root.focus_get()
-            if current is None:
-                return event
+            event.widget.insert(tk.INSERT, "\t")
+        except (AttributeError, tk.TclError):
+            return None
+        return "break"
 
-            focusable_widgets = self._get_focusable_widgets()
-            if current in focusable_widgets:
-                current_index = focusable_widgets.index(current)
-                next_index = (current_index + 1) % len(focusable_widgets)
-                focusable_widgets[next_index].focus_set()
-                return "break"
-        except Exception:
-            pass
-
-        return event
+    def _handle_tab_navigation(self, event):
+        """Move focus forward using Tk's own traversal order."""
+        return self._focus_relative(forward=True)
 
     def _handle_shift_tab_navigation(self, event):
-        """Handle Shift+Tab key navigation between widgets."""
+        """Move focus backward using Tk's own traversal order."""
+        return self._focus_relative(forward=False)
+
+    def _focus_relative(self, forward: bool):
+        """Focus the next or previous widget; return None to keep the default."""
         try:
             current = self.root.focus_get()
             if current is None:
-                return event
-
-            focusable_widgets = self._get_focusable_widgets()
-            if current in focusable_widgets:
-                current_index = focusable_widgets.index(current)
-                prev_index = (current_index - 1) % len(focusable_widgets)
-                focusable_widgets[prev_index].focus_set()
+                return None
+            target = current.tk_focusNext() if forward else current.tk_focusPrev()
+            if target is not None and target is not current:
+                target.focus_set()
                 return "break"
-        except Exception:
+        except (KeyError, tk.TclError):
             pass
-
-        return event
-
-    def _get_focusable_widgets(self):
-        """Get list of focusable widgets in order."""
-        widgets = []
-
-        if hasattr(self, "mass_shape"):
-            widgets.append(self.mass_shape)
-        if hasattr(self, "mass_density"):
-            widgets.append(self.mass_density)
-        if hasattr(self, "mass_material"):
-            widgets.append(self.mass_material)
-
-        if hasattr(self, "mass_param_widgets"):
-            widgets.extend(list(self.mass_param_widgets.values()))
-
-        if hasattr(self, "model_url_entry"):
-            widgets.append(self.model_url_entry)
-        if hasattr(self, "api_key_entry"):
-            widgets.append(self.api_key_entry)
-        if hasattr(self, "model_selection_combo"):
-            widgets.append(self.model_selection_combo)
-
-        if hasattr(self, "workspace_editor") and hasattr(self.workspace_editor, "text_editor"):
-            widgets.append(self.workspace_editor.text_editor)
-
-        return widgets
+        return None
 
     def _api_key_value(self) -> str:
         """Return the API key field content (main thread only)."""

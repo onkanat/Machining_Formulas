@@ -38,3 +38,6 @@ dist/
 
 # Local settings config
 project/assets/settings.json
+
+# yerel Claude ayarlari
+.claude/settings.local.json

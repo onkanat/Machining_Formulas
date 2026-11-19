@@ -6,6 +6,7 @@ where users and models can collaboratively edit content.
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,6 +15,8 @@ from typing import Any, Callable, Dict, List, Optional
 from tkinter import ttk, scrolledtext, messagebox
 
 from .workspace_buffer import EditType, WorkspaceBuffer, WorkspaceEdit, line_diff
+
+logger = logging.getLogger(__name__)
 
 MODE_APPEND = "append"
 MODE_INSERT = "insert"
@@ -78,6 +81,7 @@ class WorkspaceEditor(ttk.Frame):
         # Track user edits vs programmatic updates
         self._user_editing = False
         self._last_known_content = ""
+        self._saved_content = ""
 
         self._review_pane_visible = False
         self._selector_suggestions: List[WorkspaceEdit] = []
@@ -301,6 +305,9 @@ class WorkspaceEditor(ttk.Frame):
             self.text_editor.delete("1.0", tk.END)
             self.text_editor.insert("1.0", content)
             self.text_editor.edit_modified(False)
+            # `_saved_content` burada güncellenmez: bu yöntem öneri kabulünden ve
+            # versiyon geri yüklemeden sonra da çağrılır; belge diske yazılmadığı
+            # halde "kaydedilmiş" görünürse kapatma uyarısı atlanır ve iş kaybolur.
             self._last_known_content = self.text_editor.get("1.0", tk.END).rstrip("\n")
         finally:
             self._user_editing = previous_editing
@@ -338,54 +345,44 @@ class WorkspaceEditor(ttk.Frame):
                 if self.on_content_change:
                     self.on_content_change(current_content)
 
-        except Exception:
-            # Ignore errors during modification tracking
-            pass
+        except Exception as exc:
+            # Sessiz yutma, editör ile buffer'ın ayrışmasını görünmez kılıyordu.
+            logger.warning("Editör değişikliği buffer'a yazılamadı: %s", exc)
 
     def _record_text_change(self, old_content: str, new_content: str):
         """Record text change in workspace buffer."""
         min_len = min(len(old_content), len(new_content))
 
         first_diff = 0
-        for i in range(min_len):
-            if old_content[i] != new_content[i]:
-                first_diff = i
-                break
-        else:
-            first_diff = min_len
+        while first_diff < min_len and old_content[first_diff] == new_content[first_diff]:
+            first_diff += 1
 
-        old_rev = old_content[::-1]
-        new_rev = new_content[::-1]
+        # Ortak sonek, ortak öneğin bittiği yerin gerisinden başlayamaz. Aksi
+        # halde "abc" -> "abcabc" veya "a" -> "aa" gibi tekrarlı eklemelerde
+        # eklenen kısım iki tarafça da "değişmemiş" sayılıp buffer senkrondan
+        # çıkıyor, sonraki kabul/`_load_content` kullanıcının yazdığını siliyordu.
+        suffix_limit = min_len - first_diff
+        suffix = 0
+        while (
+            suffix < suffix_limit
+            and old_content[len(old_content) - 1 - suffix]
+            == new_content[len(new_content) - 1 - suffix]
+        ):
+            suffix += 1
 
-        min_suffix = min(len(old_rev), len(new_rev))
-        for i in range(min_suffix):
-            if old_rev[i] != new_rev[i]:
-                min_suffix = i
-                break
-        else:
-            # identical or one is prefix of the other
-            pass
+        old_changed = old_content[first_diff: len(old_content) - suffix]
+        new_changed = new_content[first_diff: len(new_content) - suffix]
 
-        old_suffix = old_rev[:min_suffix][::-1] if min_suffix > 0 else ""
-        new_suffix = new_rev[:min_suffix][::-1] if min_suffix > 0 else ""
-
-        old_changed = (
-            old_content[first_diff: len(old_content) - len(old_suffix)]
-            if old_suffix
-            else old_content[first_diff:]
-        )
-        new_changed = (
-            new_content[first_diff: len(new_content) - len(new_suffix)]
-            if new_suffix
-            else new_content[first_diff:]
-        )
-
-        if old_changed and not new_changed:
-            self.workspace_buffer.delete_text(first_diff, first_diff + len(old_changed), "user")
-        elif new_changed and not old_changed:
+        if not old_changed and not new_changed:
+            return
+        if not old_changed:
             self.workspace_buffer.insert_text(first_diff, new_changed, "user")
-        elif old_changed != new_changed:
-            self.workspace_buffer.replace_text(first_diff, first_diff + len(old_changed), new_changed, "user")
+        elif not new_changed:
+            self.workspace_buffer.delete_text(first_diff, first_diff + len(old_changed), "user")
+        else:
+            self.workspace_buffer.replace_text(
+                first_diff, first_diff + len(old_changed), new_changed, "user"
+            )
 
     def _update_line_numbers(self):
         """Update line numbers."""
@@ -713,6 +710,8 @@ class WorkspaceEditor(ttk.Frame):
         if messagebox.askyesno("Onay", "Çalışma alanını temizlemek istediğinizden emin misiniz?"):
             self.workspace_buffer.clear_all()
             self._load_content()
+            # Boş yeni belge temiz sayılır; kapatırken gereksiz uyarı çıkmasın.
+            self.mark_saved()
             self._refresh_suggestion_selector()
             self._update_status()
 
@@ -750,6 +749,7 @@ Sonuç: {result} {unit}
         self._user_editing = False
         try:
             cursor_pos = self.text_editor.index(tk.INSERT)
+            offset = len(self.text_editor.get("1.0", cursor_pos))
             self.text_editor.insert(cursor_pos, formatted_result)
             # İmleç eklenen bloğun sonuna taşınır; sonraki eklemeler üst üste binmez.
             self.text_editor.mark_set(
@@ -758,11 +758,8 @@ Sonuç: {result} {unit}
             self.text_editor.see(tk.INSERT)
             self.text_editor.edit_modified(False)
 
-            current_content = self.text_editor.get("1.0", tk.END).rstrip("\n")
-            self.workspace_buffer.set_content(
-                current_content, "user", f"Calculation result inserted: {calc_name}"
-            )
-            self._last_known_content = current_content
+            self.workspace_buffer.insert_text(offset, formatted_result, "user")
+            self._last_known_content = self.text_editor.get("1.0", tk.END).rstrip("\n")
         finally:
             self._user_editing = previous_editing
 
@@ -774,6 +771,14 @@ Sonuç: {result} {unit}
     def get_current_content(self) -> str:
         """Get current editor content."""
         return self.text_editor.get("1.0", tk.END).rstrip("\n")
+
+    def is_dirty(self) -> bool:
+        """Return True when content differs from the last saved or loaded state."""
+        return self.get_current_content() != self._saved_content
+
+    def mark_saved(self) -> None:
+        """Record the current document as saved."""
+        self._saved_content = self.get_current_content()
 
     def set_content(self, content: str):
         """Set editor content."""
